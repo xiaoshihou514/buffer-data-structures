@@ -1,5 +1,4 @@
 #include "gap_buffer.h"
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
@@ -40,7 +39,7 @@ void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc);
 
 void gb_search(GapBuffer *gb, char *needle);
 
-void gb_free(GapBuffer gb[static 1]) {
+void gb_free(GapBuffer *gb) {
     free(gb->data);
     free(gb->md);
     free(gb);

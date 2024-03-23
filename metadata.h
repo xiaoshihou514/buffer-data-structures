@@ -2,7 +2,7 @@
 
 struct MetaDataNode {
     size_t line_number;
-    // so data[relative_offset] should be '\n'
+    // byte offset
     size_t relative_offset;
     struct MetaDataNode *left;
     struct MetaDataNode *right;
@@ -26,4 +26,4 @@ void md_shift(MetaData *md, size_t linenr, size_t amount);
 // TODO: not clear how to implement
 void md_insert_single(MetaData *md, size_t linenr, size_t offset);
 
-void md_free(MetaData md[static 1]);
+void md_free(MetaData *md);

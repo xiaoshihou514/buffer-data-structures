@@ -4,9 +4,9 @@ typedef struct {
 
 } PieceTree;
 
-wchar_t pt_get_char(PieceTree *pt, size_t row, size_t col);
+wchar_t pt_get_char(PieceTree *pt, int row, int col);
 
-void pt_insert(PieceTree *pt, size_t row, size_t col, wchar_t *wc);
+void pt_insert(PieceTree *pt, int row, int col, wchar_t *wc);
 
 void pt_search(PieceTree *pt, char *needle);
 

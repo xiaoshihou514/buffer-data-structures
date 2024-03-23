@@ -8,23 +8,20 @@
  */
 MetaDataNode *create_node(size_t index[static 1], size_t start, size_t end,
                           size_t parent_offset) {
-    MetaDataNode *result = malloc(sizeof(MetaDataNode));
     if (start == end) {
         // base case
-        result->line_number = start;
-        result->relative_offset = index[start] - parent_offset;
-        result->left = nullptr;
-        result->right = nullptr;
+        return nullptr;
     } else {
         // recursive case
+        MetaDataNode *result = malloc(sizeof(MetaDataNode));
         result->line_number = (start + end) / 2;
         result->relative_offset = index[result->line_number] - parent_offset;
         result->left = create_node(index, start, result->line_number,
                                    index[result->line_number]);
         result->right = create_node(index, result->line_number + 1, end,
                                     index[result->line_number]);
+        return result;
     }
-    return result;
 }
 
 MetaData *md_new(wchar_t src[static 1]) {
@@ -33,7 +30,7 @@ MetaData *md_new(wchar_t src[static 1]) {
     // put all offsets in the list
     for (size_t i = 0; i < wcslen(src); i++) {
         if (src[i] == L'\n') {
-            alist_push(alist, i);
+            alist_push(alist, i * sizeof(wchar_t));
         }
     }
     // create tree structure recursively
@@ -43,7 +40,17 @@ MetaData *md_new(wchar_t src[static 1]) {
 }
 
 // get byte offset of linenr
-size_t md_get_offset(MetaData *md, size_t linenr);
+size_t md_get_offset(MetaData *md, size_t linenr) {
+    MetaDataNode *node;
+    size_t acc = acc;
+    while (node != nullptr && node->line_number != linenr) {
+    }
+    if (node == nullptr) {
+        return -1;
+    } else {
+        return acc;
+    }
+}
 
 // shift every line bigger than linenr by amount
 void md_shift(MetaData *md, size_t linenr, size_t amount);
@@ -60,7 +67,7 @@ void md_node_free(MetaDataNode *node) {
     }
 }
 
-void md_free(MetaData md[static 1]) {
+void md_free(MetaData *md) {
     md_node_free(md->root);
     free(md);
 }

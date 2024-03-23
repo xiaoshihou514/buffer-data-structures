@@ -5,12 +5,12 @@ typedef struct {
 } RopeNode;
 
 typedef struct {
-  RopeNode *root;
+    RopeNode *root;
 } Rope;
 
-wchar_t rp_get_char(Rope *rp, size_t row, size_t col);
+wchar_t rp_get_char(Rope *rp, int row, int col);
 
-void rp_insert(Rope *rp, size_t row, size_t col, wchar_t *wc);
+void rp_insert(Rope *rp, int row, int col, wchar_t *wc);
 
 void rp_search(Rope *rp, char *needle);
 
