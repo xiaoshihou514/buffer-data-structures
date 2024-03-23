@@ -22,10 +22,10 @@ Test(array_list, pushing_two_items) {
 }
 
 Test(array_list, pushing_forty_two) {
-    for (int i = 0; i < 42; i++) {
+    for (size_t i = 0; i < 42; i++) {
         alist_push(alist, i);
     }
-    for (int i = 0; i < 42; i++) {
+    for (size_t i = 0; i < 42; i++) {
         cr_expect_eq(alist->data[i], i);
     }
 }

@@ -37,7 +37,7 @@ wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
 
 void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc);
 
-void gb_search(GapBuffer *gb, char *needle);
+ArrayList *gb_search(GapBuffer *gb, char *needle);
 
 void gb_free(GapBuffer *gb) {
     free(gb->data);

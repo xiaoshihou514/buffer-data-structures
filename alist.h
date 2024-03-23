@@ -1,14 +1,15 @@
+#include "sys/types.h"
 #include <stddef.h>
 
 // specialized array list for int
 typedef struct {
-    int *data;
-    int size;
-    int used;
+    ssize_t *data;
+    size_t size;
+    size_t used;
 } ArrayList;
 
 ArrayList *alist_new();
 
-void alist_push(ArrayList alist[static 1], int item);
+void alist_push(ArrayList alist[static 1], ssize_t item);
 
-void alist_free(ArrayList alist[static 1]);
+void alist_free(ArrayList *alist);
