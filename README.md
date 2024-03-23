@@ -29,7 +29,7 @@ We put meta data like line positions in a tree, the tree is a balanced tree with
   simply traverse the tree
 - shift(from, amount);
   complexity: O(log n)
-  It's hard to explain, check out the picture here
+  It's hard to explain, check out the picture [here](https://github.com/xiaoshihou514/buffer-data-structures/blob/main/resources/metadata_tree_shifting.png)
 - insert_line(line_number, at)
 
 ### rope
