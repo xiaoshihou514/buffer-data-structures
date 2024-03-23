@@ -8,14 +8,21 @@ LIBOBJS=$(patsubst %.c,$(LIBDESTDIR)/%.o,$(LIBSRCS))
 TESTDESTDIR=build/test
 TESTSRCS=$(wildcard test/*.c)
 TESTBINS=$(patsubst test/%.c,$(TESTDESTDIR)/%,$(TESTSRCS))
+TESTCOVS=$(patsubst test/%.c,$(LIBDESTDIR)/%.gcov,$(TESTSRCS))
+
+.PHONY: clean init lib test covreport
 
 init:
 	@mkdir -p build/test
+	@mkdir -p build/report
+
+clean:
+	@rm -rf build
 
 lib: init $(LIBOBJS)
 
 $(LIBDESTDIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -fprofile-arcs -ftest-coverage -c $< -o $@
 
 test: $(TESTBINS)
 	@for test in $(TESTBINS); do \
@@ -25,5 +32,13 @@ test: $(TESTBINS)
 		fi; \
 	done
 	@echo "All tests passed. Generating coverage report..."
+	@$(MAKE) covreport
+
 $(TESTDESTDIR)/%: test/%.c lib
 	$(CC) $(CFLAGS) -fprofile-arcs -ftest-coverage $< $(LIBOBJS) -o $@ -lcriterion
+
+covreport: $(TESTCOVS)
+	gcovr --html-details report/index.html --html-theme github.dark-green -r ..
+
+$(LIBDESTDIR)/%.gcov:
+	gcov -o $(TESTDESTDIR)/$*-$*.gcno $(patsubst %_test,%.c,$*).c -t > $@

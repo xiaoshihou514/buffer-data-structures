@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <wchar.h>
 
+/*
+ * start inclusive, end exclusive
+ */
 MetaDataNode *create_node(size_t index[static 1], size_t start, size_t end,
                           size_t parent_offset) {
     MetaDataNode *result = malloc(sizeof(MetaDataNode));
@@ -16,7 +19,7 @@ MetaDataNode *create_node(size_t index[static 1], size_t start, size_t end,
         // recursive case
         result->line_number = (start + end) / 2;
         result->relative_offset = index[result->line_number] - parent_offset;
-        result->left = create_node(index, start, result->line_number - 1,
+        result->left = create_node(index, start, result->line_number,
                                    index[result->line_number]);
         result->right = create_node(index, result->line_number + 1, end,
                                     index[result->line_number]);
