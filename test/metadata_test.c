@@ -62,20 +62,20 @@ TestSuite(metadata, .init = init_metadata, .fini = free_metadata);
 
 Test(metadata, new) {
     /* should give
-     *          3
-     *        /   \
-     *     2         5
-     *   /   \     /   \
-     *  1   null  4   null
+     *          3                      3
+     *        /   \                  /   \
+     *     2         5     or     -1        2
+     *   /   \     /   \        /   \     /   \
+     *  1   null  4   null     -1   null  -1   null
      */
 
     // check line numbers
     MetaDataNode *root = md_simple->root;
-    cr_assert_eq(root->line_number, 3);
-    cr_assert_eq(root->left->line_number, 2);
-    cr_assert_eq(root->right->line_number, 5);
-    cr_assert_eq(root->left->left->line_number, 1);
-    cr_assert_eq(root->right->left->line_number, 4);
+    cr_assert_eq(root->relative_linenr, 3);
+    cr_assert_eq(root->left->relative_linenr, -1);
+    cr_assert_eq(root->right->relative_linenr, 2);
+    cr_assert_eq(root->left->left->relative_linenr, -1);
+    cr_assert_eq(root->right->left->relative_linenr, -1);
 
     cr_assert_null(root->left->right);
     cr_assert_null(root->right->right);
@@ -146,5 +146,19 @@ Test(metadata, shift) {
         for (size_t k = i; k < alist->used; k++) {
             cr_assert_eq(md_get_offset(md, k + 1), alist->data[k] - 42);
         }
+    }
+}
+
+Test(metadata, insert) {
+    md_insert(md, 8);
+    // line [1..7] should stay the same
+    for (size_t i = 0; i < 6; i++) {
+        cr_assert_eq(md_get_offset(md, i + 1), alist->data[i]);
+    }
+    // line 8 is line 7 plus one
+    cr_assert_eq(md_get_offset(md, 7) + 1, md_get_offset(md, 8));
+    // ...and line [9..] should be incremented by 1
+    for (size_t j = 8; j < alist->used + 1; j++) {
+        cr_assert_eq(md_get_offset(md, j + 1), alist->data[j - 1] + 1);
     }
 }

@@ -38,7 +38,7 @@ $(TESTDESTDIR)/%: test/%.c lib
 	$(CC) $(CFLAGS) -fprofile-arcs -ftest-coverage $< $(LIBOBJS) -o $@ -lcriterion
 
 covreport: $(TESTCOVS)
-	gcovr --html-details build/report/index.html --html-theme github.dark-green -r ..
+	gcovr --html-details build/report/index.html --html-theme github.dark-green -r .
 
 $(LIBDESTDIR)/%.gcov:
 	gcov -o $(TESTDESTDIR)/$*-$*.gcno $(patsubst %_test,%.c,$*).c -t > $@
