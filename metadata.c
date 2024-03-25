@@ -1,4 +1,5 @@
 #include "alist.h"
+#include "criterion/logging.h"
 #include "metadata.h"
 #include "sys/types.h"
 #include <stdlib.h>
@@ -61,9 +62,9 @@ size_t md_get_offset(MetaData *md, size_t linenr) {
     while (node) {
         acc += node->relative_offset;
         row_acc += node->relative_linenr;
-        if (row_acc == linenr) {
+        if ((size_t)row_acc == linenr) {
             break;
-        } else if (row_acc < linenr) {
+        } else if ((size_t)row_acc < linenr) {
             node = node->right;
         } else {
             node = node->left;
@@ -83,9 +84,9 @@ void md_shift(MetaData *md, size_t linenr, ssize_t amount) {
     ssize_t row_acc = 0;
     while (node) {
         row_acc += node->relative_linenr;
-        if (row_acc == linenr) {
+        if ((size_t)row_acc == linenr) {
             break;
-        } else if (row_acc < linenr) {
+        } else if ((size_t)row_acc < linenr) {
             node = node->right;
         } else {
             node = node->left;
@@ -119,8 +120,160 @@ void md_shift(MetaData *md, size_t linenr, ssize_t amount) {
     }
 }
 
-// TODO: come back to this
+size_t node_get_depth(MetaDataNode *node) {
+    if (!node) {
+        return 0;
+    }
+    size_t left = node_get_depth(node->left);
+    size_t right = node_get_depth(node->right);
+    return (left > right) ? left + 1 : right + 1;
+}
+
+// returns the new root node
+MetaDataNode *rotate_left(MetaDataNode *a) {
+    MetaDataNode *b = a->right;
+    if (!b) {
+        return a;
+    }
+    MetaDataNode *beta = b->left;
+
+    // b would become the root, so we make its relatve params absolute
+    b->relative_offset += a->relative_offset;
+    b->relative_linenr += a->relative_linenr;
+    // beta had parent b and now has parent a, we have to adjust that
+    if (beta) {
+        beta->relative_linenr += b->relative_linenr;
+        beta->relative_offset += b->relative_offset;
+        beta->relative_linenr -= a->relative_linenr;
+        beta->relative_offset -= a->relative_offset;
+    }
+    // a is now relative
+    a->relative_offset -= b->relative_offset;
+    a->relative_linenr -= b->relative_linenr;
+
+    // do the rotation
+    a->right = beta;
+    b->left = a;
+    return b;
+}
+
+MetaDataNode *rotate_right(MetaDataNode *b) {
+    MetaDataNode *a = b->left;
+    if (!a) {
+        return b;
+    }
+    MetaDataNode *beta = a->right;
+
+    // a would become the root, so we make its relatve params absolute
+    a->relative_offset += b->relative_offset;
+    a->relative_linenr += b->relative_linenr;
+    // beta had parent a and now has parent b, we have to adjust that
+    if (beta) {
+        beta->relative_linenr += a->relative_linenr;
+        beta->relative_offset += a->relative_offset;
+        beta->relative_linenr -= b->relative_linenr;
+        beta->relative_offset -= b->relative_offset;
+    }
+    // b is now relative
+    b->relative_offset -= a->relative_offset;
+    b->relative_linenr -= a->relative_linenr;
+
+    // do the rotation
+    b->left = beta;
+    a->right = b;
+    return a;
+}
+
+// FIXME: infinite loop
+void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
+                              size_t node_right_depth, bool initial_left,
+                              MetaData *md) {
+    size_t left_depth = node_left_depth;
+    size_t right_depth = node_right_depth;
+    bool left = initial_left;
+    bool left_of_parent;
+    MetaDataNode *node = target;
+
+    while (node->parent) {
+        cr_log_info("node: %p, node->parent: %p", node, node->parent);
+        // in this loop we make node balanced
+        // update depth lazily
+        if (left) {
+            left_depth =
+                (left_depth > right_depth) ? left_depth + 1 : right_depth + 1;
+            right_depth = node_get_depth(node->right) + 1;
+        } else {
+            right_depth =
+                (left_depth > right_depth) ? left_depth + 1 : right_depth + 1;
+            left_depth = node_get_depth(node->right) + 1;
+        }
+
+        // see which parent pointer we have to update
+        // BUG: one parent is borked, causing an infinite loop
+        left_of_parent = node->parent->left == node;
+        if (left_depth > right_depth + 1) {
+            // rotate right to fix this
+            for (size_t i = 0; i < (left_depth - right_depth) / 2; i++) {
+                node = rotate_right(node);
+            }
+            if (left_of_parent) {
+                node->parent->left = node;
+            } else {
+                node->parent->right = node;
+            }
+        } else if (right_depth > left_depth + 1) {
+            // rotate left instead
+            for (size_t i = 0; i < (right_depth - left_depth) / 2; i++) {
+                node = rotate_left(node);
+            }
+            if (left_of_parent) {
+                node->parent->left = node;
+            } else {
+                node->parent->right = node;
+            }
+        }
+
+        cr_log_info("node: %p, node->parent: %p", node, node->parent);
+        left = left_of_parent;
+        node = node->parent;
+        cr_log_info("node: %p, node->parent: %p", node, node->parent);
+        cr_log_info("-----------------------");
+    }
+
+    // now we should have reached the root node, this is a special case since
+    // the root node does not have a parent and we have to update md->root
+    // directly, but the reset of the logic is basically copy pasting
+    if (left) {
+        left_depth =
+            (left_depth > right_depth) ? left_depth + 1 : right_depth + 1;
+        right_depth = node_get_depth(node->right) + 1;
+    } else {
+        right_depth =
+            (left_depth > right_depth) ? left_depth + 1 : right_depth + 1;
+        left_depth = node_get_depth(node->right) + 1;
+    }
+    if (left_depth > right_depth + 1) {
+        // rotate right to fix this
+        for (size_t i = 0; i < left_depth - right_depth / 2; i++) {
+            node = rotate_right(node);
+        }
+        md->root = node;
+    } else if (right_depth > left_depth + 1) {
+        // rotate left instead
+        for (size_t i = 0; i < right_depth - left_depth / 2; i++) {
+            node = rotate_left(node);
+        }
+        md->root = node;
+    }
+}
+
 void md_insert(MetaData *md, size_t linenr) {
+    if (linenr > md->rows) {
+        // invalid
+        return;
+    }
+    // update count
+    md->rows++;
     // if tree empty
     if (md->root == nullptr && linenr == 1) {
         md->root = malloc(sizeof(MetaDataNode));
@@ -129,16 +282,73 @@ void md_insert(MetaData *md, size_t linenr) {
         md->root->parent = nullptr;
         md->root->relative_linenr = 1;
         md->root->relative_offset = 0;
-        md->rows++;
         return;
     }
     // if tree not empty
-    MetaDataNode *parent;
-    MetaDataNode *current = md->root;
+    // increment the offset and relative number of [linenr..] by 1
+    MetaDataNode *target;
+    MetaDataNode *node = md->root;
     ssize_t row_acc = 0;
-    while (current) {
-        row_acc += current->relative_linenr;
+    while (node) {
+        row_acc += node->relative_linenr;
+        if ((size_t)row_acc == linenr) {
+            break;
+        } else if ((size_t)row_acc > linenr) {
+            node = node->left;
+        } else {
+            node = node->right;
+        }
     }
+    // save it for later
+    target = node;
+    MetaDataNode *child = node->left;
+    if (child) {
+        child->relative_linenr--;
+    }
+    bool left = true;
+    // shift relative linenr
+    while (node->parent) {
+        child = node;
+        node = node->parent;
+        // child is left of node and we reached child via its right node
+        if (child == node->left) {
+            if (!left) {
+                child->relative_linenr--;
+            }
+            left = true;
+        }
+        // child is right of node and we reached child via its left node
+        if (child == node->right) {
+            if (left) {
+                child->relative_linenr++;
+            }
+            left = false;
+        }
+    }
+    if (left) {
+        node->relative_linenr++;
+    }
+
+    // shift relative offset
+    md_shift(md, linenr + 1, 1);
+
+    // correct error
+    target->left->relative_linenr++;
+
+    // insert and rotate
+    MetaDataNode *new = malloc(sizeof(MetaDataNode));
+    new->relative_linenr = -1;
+    new->relative_offset = target->left->relative_offset + 1;
+    new->parent = target;
+    // don' forget the original left node, we can't lose it!
+    new->left = target->left;
+    new->right = nullptr;
+
+    // the new node is always put to the left of the previous one
+    target->left = new;
+
+    // balance every node that's an ancestor (and including) new
+    balance_ancestor_of_node(new, node_get_depth(new->left), 0, true, md);
 }
 
 // delete the given line

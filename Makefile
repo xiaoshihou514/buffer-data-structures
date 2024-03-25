@@ -26,7 +26,7 @@ $(LIBDESTDIR)/%.o: %.c
 
 test: $(TESTBINS)
 	@for test in $(TESTBINS); do \
-		./$$test --verbose -j0 -f ; \
+		./$$test --verbose -f ; \
 		if [ $$? -ne 0 ]; then \
 			exit 1; \
 		fi; \

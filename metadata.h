@@ -3,7 +3,8 @@
 
 struct MetaDataNode {
     ssize_t relative_linenr;
-    // byte offset
+    // byte offset of linenr in the gap buffer (does not take account of gap
+    // position)
     ssize_t relative_offset;
     struct MetaDataNode *left;
     struct MetaDataNode *right;
@@ -37,7 +38,15 @@ void md_shift(MetaData *md, size_t linenr, ssize_t amount);
  */
 void md_insert(MetaData *md, size_t linenr);
 
-// delete the given line
+/*
+ * delete the given line
+ */
 void md_delete(MetaData *md, size_t linenr);
+
+/*
+ * helper methods
+ */
+MetaDataNode *rotate_left(MetaDataNode *a);
+MetaDataNode *rotate_right(MetaDataNode *a);
 
 void md_free(MetaData *md);

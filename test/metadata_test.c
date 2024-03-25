@@ -1,6 +1,7 @@
 #include "../alist.h"
 #include "../metadata.h"
 #include <criterion/criterion.h>
+#include <criterion/new/assert.h>
 #include <wchar.h>
 
 MetaData *md;
@@ -30,7 +31,7 @@ wchar_t *src =
     L"the text). Insertion adds new text \nat the\n end of \nthe first "
     L"segment; deletion deletes it.\n";
 
-void init_metadata(void) {
+void setup(void) {
     md = md_new(src);
     md_simple = md_new(src_simple);
 
@@ -51,14 +52,19 @@ void init_metadata(void) {
     }
 }
 
-void free_metadata(void) {
+void teardown(void) {
     md_free(md);
     md_free(md_simple);
     alist_free(alist);
     alist_free(alist_simple);
 }
 
-TestSuite(metadata, .init = init_metadata, .fini = free_metadata);
+#define md_get_works                                                           \
+    for (size_t i = 0; i < alist->used; i++) {                                 \
+        cr_assert(eq(sz, md_get_offset(md, i + 1), alist->data[i]));           \
+    }
+
+TestSuite(metadata, .init = setup, .fini = teardown);
 
 Test(metadata, new) {
     /* should give
@@ -71,46 +77,43 @@ Test(metadata, new) {
 
     // check line numbers
     MetaDataNode *root = md_simple->root;
-    cr_assert_eq(root->relative_linenr, 3);
-    cr_assert_eq(root->left->relative_linenr, -1);
-    cr_assert_eq(root->right->relative_linenr, 2);
-    cr_assert_eq(root->left->left->relative_linenr, -1);
-    cr_assert_eq(root->right->left->relative_linenr, -1);
+    cr_assert(eq(sz, 3, root->relative_linenr));
+    cr_assert(eq(sz, -1, root->left->relative_linenr));
+    cr_assert(eq(sz, 2, root->right->relative_linenr));
+    cr_assert(eq(sz, -1, root->left->left->relative_linenr));
+    cr_assert(eq(sz, -1, root->right->left->relative_linenr));
 
     cr_assert_null(root->left->right);
     cr_assert_null(root->right->right);
 
     // check parent is indeed parent
-    cr_assert_eq(root->left->parent, root);
-    cr_assert_eq(root->right->parent, root);
-    cr_assert_eq(root->left->left->parent, root->left);
-    cr_assert_eq(root->right->left->parent, root->right);
+    cr_assert(eq(ptr, root, root->left->parent));
+    cr_assert(eq(ptr, root, root->right->parent));
+    cr_assert(eq(ptr, root->left, root->left->left->parent));
+    cr_assert(eq(ptr, root->right, root->right->left->parent));
 
     // check they are indeed line breaks
     ssize_t root_offset = root->relative_offset;
     ssize_t left_offset = root->left->relative_offset;
     ssize_t right_offset = root->right->relative_offset;
-    cr_assert_eq(src_simple[root_offset / sizeof(wchar_t)], L'\n');
-    cr_assert_eq(src_simple[(root_offset + left_offset) / sizeof(wchar_t)],
-                 L'\n');
-    cr_assert_eq(src_simple[(root_offset + right_offset) / sizeof(wchar_t)],
-                 L'\n');
+    cr_assert(eq(sz, L'\n', src_simple[root_offset / sizeof(wchar_t)]));
+    cr_assert(eq(sz, L'\n',
+                 src_simple[(root_offset + left_offset) / sizeof(wchar_t)]));
+    cr_assert(eq(sz, L'\n',
+                 src_simple[(root_offset + right_offset) / sizeof(wchar_t)]));
 
-    cr_assert_eq(src_simple[(root_offset + right_offset +
+    cr_assert(eq(sz, L'\n',
+                 src_simple[(root_offset + right_offset +
                              root->right->left->relative_offset) /
-                            sizeof(wchar_t)],
-                 L'\n');
+                            sizeof(wchar_t)]));
     // note that line 1's line break does not have a real \n
-    cr_assert_eq(root_offset + left_offset + root->left->left->relative_offset,
-                 0);
+    cr_assert(eq(
+        sz, 0, root_offset + left_offset + root->left->left->relative_offset));
 }
 
 Test(metadata, get) {
-    for (size_t i = 0; i < alist->used; i++) {
-        cr_assert_eq(md_get_offset(md, i + 1), alist->data[i]);
-    }
-    for (size_t i = alist->used; i < 42; i++) {
-        cr_assert_eq(md_get_offset(md, i + 1), -1);
+    md_get_works for (size_t i = alist->used; i < 42; i++) {
+        cr_assert(eq(sz, md_get_offset(md, i + 1), -1));
     }
 }
 
@@ -121,14 +124,14 @@ Test(metadata, shift) {
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
-            cr_assert_eq(md_get_offset(md_simple, j + 1),
-                         alist_simple->data[j]);
+            cr_assert(
+                eq(sz, md_get_offset(md_simple, j + 1), alist_simple->data[j]));
         }
 
         // ...and everything after should be incremented by 42
         for (size_t k = i; k < alist_simple->used; k++) {
-            cr_assert_eq(md_get_offset(md_simple, k + 1),
-                         alist_simple->data[k] + 42);
+            cr_assert(eq(sz, md_get_offset(md_simple, k + 1),
+                         alist_simple->data[k] + 42));
         }
     }
 
@@ -139,26 +142,97 @@ Test(metadata, shift) {
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
-            cr_assert_eq(md_get_offset(md, j + 1), alist->data[j]);
+            cr_assert(eq(sz, md_get_offset(md, j + 1), alist->data[j]));
         }
 
         // ...and everything after should be decremented by 42
         for (size_t k = i; k < alist->used; k++) {
-            cr_assert_eq(md_get_offset(md, k + 1), alist->data[k] - 42);
+            cr_assert(eq(sz, md_get_offset(md, k + 1), alist->data[k] - 42));
         }
     }
 }
 
-Test(metadata, insert) {
-    md_insert(md, 8);
-    // line [1..7] should stay the same
-    for (size_t i = 0; i < 6; i++) {
-        cr_assert_eq(md_get_offset(md, i + 1), alist->data[i]);
-    }
-    // line 8 is line 7 plus one
-    cr_assert_eq(md_get_offset(md, 7) + 1, md_get_offset(md, 8));
-    // ...and line [9..] should be incremented by 1
-    for (size_t j = 8; j < alist->used + 1; j++) {
-        cr_assert_eq(md_get_offset(md, j + 1), alist->data[j - 1] + 1);
-    }
+Test(metadata, rotate_simple) {
+    md_simple->root = rotate_left(md_simple->root);
+    /* should give
+     *        5                 5
+     *       /                 /
+     *      3                 -2
+     *     / \        or     / \
+     *    2   4             -1   1
+     *   /                 /
+     *  1                 -1
+     */
+    MetaDataNode *root = md_simple->root;
+    cr_assert(eq(sz, 5, root->relative_linenr));
+    cr_assert_null(root->right);
+    cr_assert(eq(sz, -2, root->left->relative_linenr));
+    cr_assert(eq(sz, 1, root->left->right->relative_linenr));
+    cr_assert(eq(sz, -1, root->left->left->relative_linenr));
+    cr_assert(eq(sz, -1, root->left->left->left->relative_linenr));
+
+    md_simple = md_new(src_simple);
+    md_simple->root = rotate_right(md_simple->root);
+    /* should give
+     *    2                2
+     *   / \              / \
+     *  1   3       or  -1   1
+     *       \                \
+     *        5                2
+     *       /                /
+     *      4                -1
+     */
+    root = md_simple->root;
+    cr_assert(eq(sz, 2, root->relative_linenr));
+    cr_assert(eq(sz, -1, root->left->relative_linenr));
+    cr_assert(eq(sz, 1, root->right->relative_linenr));
+    cr_assert(eq(sz, 2, root->right->right->relative_linenr));
+    cr_assert(eq(sz, -1, root->right->right->left->relative_linenr));
+}
+
+Test(metadata, rotate_complex_left) {
+    md->root = rotate_left(md->root);
+    md_get_works
+}
+
+Test(metadata, rotate_complex_right) {
+    md->root = rotate_left(md->root);
+    md_get_works
+}
+
+Test(metadata, insert_simple) {
+    md_insert(md_simple, 2);
+    MetaDataNode *root = md_simple->root;
+    /* if this is not balanced, it should give:
+     *          4               4
+     *         / \             / \
+     *        3   6          -1   2
+     *       /   /     or    /   /
+     *      2   5          -1   -1
+     *     /               /
+     *    1              -1
+     */
+    // cr_assert(eq(i64, root->relative_linenr, 4));
+    // cr_assert(eq(i64, root->left->relative_linenr, -1));
+    // cr_assert(eq(i64, root->left->left->relative_linenr, -1));
+    // cr_assert(eq(i64, root->left->left->left->relative_linenr, -1));
+    // cr_assert(eq(i64, root->right->relative_linenr, 2));
+    // cr_assert(eq(i64, root->right->left->relative_linenr, -1));
+
+    /* after balancing, it should give
+     *          4             4
+     *         / \           / \
+     *        2   6    or  -2   2
+     *       / \ /         / \ /
+     *      1  3 5       -1  1 -1
+     */
+    cr_assert(eq(i64, root->relative_linenr, 4));
+
+    cr_assert(eq(i64, root->left->relative_linenr, -2));
+    cr_assert(eq(i64, root->left->left->relative_linenr, -1));
+    cr_assert(eq(i64, root->left->right->relative_linenr, 1));
+    cr_assert(eq(ptr, root->left->left->left, nullptr));
+
+    cr_assert(eq(i64, root->right->relative_linenr, 2));
+    cr_assert(eq(i64, root->right->left->relative_linenr, -1));
 }
