@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -pedantic -std=c2x -g
+CFLAGS=-Wall -Wextra -pedantic -std=c2x -g -fprofile-arcs -ftest-coverage
 
 LIBDESTDIR=build
 LIBSRCS=$(wildcard *.c)
@@ -22,7 +22,7 @@ clean:
 lib: init $(LIBOBJS)
 
 $(LIBDESTDIR)/%.o: %.c
-	$(CC) $(CFLAGS) -fprofile-arcs -ftest-coverage -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 test: $(TESTBINS)
 	@for test in $(TESTBINS); do \
@@ -35,7 +35,7 @@ test: $(TESTBINS)
 	@$(MAKE) covreport
 
 $(TESTDESTDIR)/%: test/%.c lib
-	$(CC) $(CFLAGS) -fprofile-arcs -ftest-coverage $< $(LIBOBJS) -o $@ -lcriterion
+	$(CC) $(CFLAGS) $< $(LIBOBJS) -o $@ -lcriterion
 
 covreport: $(TESTCOVS)
 	gcovr --html-details build/report/index.html --html-theme github.dark-green -r .

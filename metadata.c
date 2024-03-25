@@ -1,5 +1,4 @@
 #include "alist.h"
-#include "criterion/logging.h"
 #include "metadata.h"
 #include "sys/types.h"
 #include <stdlib.h>
@@ -184,7 +183,7 @@ MetaDataNode *rotate_right(MetaDataNode *b) {
     return a;
 }
 
-// FIXME: infinite loop
+// BUG: double free, must still have dangling pointers somewhere
 void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
                               size_t node_right_depth, bool initial_left,
                               MetaData *md) {
@@ -195,8 +194,7 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
     MetaDataNode *node = target;
 
     while (node->parent) {
-        cr_log_info("node: %p, node->parent: %p", node, node->parent);
-        // in this loop we make node balanced
+        // in this loop we make `node` balanced
         // update depth lazily
         if (left) {
             left_depth =
@@ -209,8 +207,8 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
         }
 
         // see which parent pointer we have to update
-        // BUG: one parent is borked, causing an infinite loop
         left_of_parent = node->parent->left == node;
+        MetaDataNode *parent = node->parent;
         if (left_depth > right_depth + 1) {
             // rotate right to fix this
             for (size_t i = 0; i < (left_depth - right_depth) / 2; i++) {
@@ -221,6 +219,7 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
             } else {
                 node->parent->right = node;
             }
+            node->parent = parent;
         } else if (right_depth > left_depth + 1) {
             // rotate left instead
             for (size_t i = 0; i < (right_depth - left_depth) / 2; i++) {
@@ -231,13 +230,11 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
             } else {
                 node->parent->right = node;
             }
+            node->parent = parent;
         }
 
-        cr_log_info("node: %p, node->parent: %p", node, node->parent);
         left = left_of_parent;
         node = node->parent;
-        cr_log_info("node: %p, node->parent: %p", node, node->parent);
-        cr_log_info("-----------------------");
     }
 
     // now we should have reached the root node, this is a special case since
