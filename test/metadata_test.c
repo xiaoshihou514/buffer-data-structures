@@ -61,7 +61,7 @@ void teardown(void) {
 
 #define md_get_works                                                           \
     for (size_t i = 0; i < alist->used; i++) {                                 \
-        cr_assert(eq(sz, md_get_offset(md, i + 1), alist->data[i]));           \
+        cr_assert(eq(sz, md_get_line_start(md, i + 1), alist->data[i]));       \
     }
 
 TestSuite(metadata, .init = setup, .fini = teardown);
@@ -71,8 +71,8 @@ Test(metadata, new) {
      *          3                      3
      *        /   \                  /   \
      *     2         5     or     -1        2
-     *   /   \     /   \        /   \     /   \
-     *  1   null  4   null     -1   null  -1   null
+     *   /   \     /   \         /   \     /   \
+     *  1   null  4   null    -1    null -1   null
      */
 
     // check line numbers
@@ -96,26 +96,22 @@ Test(metadata, new) {
     ssize_t root_offset = root->relative_offset;
     ssize_t left_offset = root->left->relative_offset;
     ssize_t right_offset = root->right->relative_offset;
-    cr_assert(eq(sz, L'\n', src_simple[root_offset / sizeof(wchar_t)]));
-    cr_assert(eq(sz, L'\n',
-                 src_simple[(root_offset + left_offset) / sizeof(wchar_t)]));
-    cr_assert(eq(sz, L'\n',
-                 src_simple[(root_offset + right_offset) / sizeof(wchar_t)]));
+    cr_assert_eq(src_simple[root_offset / sizeof(wchar_t)], L'\n');
+    cr_assert_eq(src_simple[(root_offset + left_offset) / sizeof(wchar_t)],
+                 L'\n');
+    cr_assert_eq(src_simple[(root_offset + right_offset) / sizeof(wchar_t)],
+                 L'\n');
 
-    cr_assert(eq(sz, L'\n',
-                 src_simple[(root_offset + right_offset +
+    cr_assert_eq(src_simple[(root_offset + right_offset +
                              root->right->left->relative_offset) /
-                            sizeof(wchar_t)]));
+                            sizeof(wchar_t)],
+                 L'\n');
     // note that line 1's line break does not have a real \n
-    cr_assert(eq(
-        sz, 0, root_offset + left_offset + root->left->left->relative_offset));
+    cr_assert_eq(root_offset + left_offset + root->left->left->relative_offset,
+                 0);
 }
 
-Test(metadata, get) {
-    md_get_works for (size_t i = alist->used; i < 42; i++) {
-        cr_assert(eq(sz, md_get_offset(md, i + 1), -1));
-    }
-}
+Test(metadata, get){md_get_works}
 
 Test(metadata, shift) {
     for (size_t i = 0; i < alist_simple->used; i++) {
@@ -124,13 +120,13 @@ Test(metadata, shift) {
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
-            cr_assert(
-                eq(sz, md_get_offset(md_simple, j + 1), alist_simple->data[j]));
+            cr_assert(eq(sz, md_get_line_start(md_simple, j + 1),
+                         alist_simple->data[j]));
         }
 
         // ...and everything after should be incremented by 42
         for (size_t k = i; k < alist_simple->used; k++) {
-            cr_assert(eq(sz, md_get_offset(md_simple, k + 1),
+            cr_assert(eq(sz, md_get_line_start(md_simple, k + 1),
                          alist_simple->data[k] + 42));
         }
     }
@@ -142,14 +138,25 @@ Test(metadata, shift) {
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
-            cr_assert(eq(sz, md_get_offset(md, j + 1), alist->data[j]));
+            cr_assert(eq(sz, md_get_line_start(md, j + 1), alist->data[j]));
         }
 
         // ...and everything after should be decremented by 42
         for (size_t k = i; k < alist->used; k++) {
-            cr_assert(eq(sz, md_get_offset(md, k + 1), alist->data[k] - 42));
+            cr_assert(
+                eq(sz, md_get_line_start(md, k + 1), alist->data[k] - 42));
         }
     }
+}
+
+Test(metadata, shift_tail) {
+    md_shift(md_simple, alist_simple->used, 42);
+    for (size_t i = 0; i < alist_simple->used - 1; i++) {
+        cr_assert(
+            eq(sz, md_get_line_start(md_simple, i + 1), alist_simple->data[i]));
+    }
+    cr_assert(eq(sz, md_get_line_start(md_simple, alist_simple->used),
+                 alist_simple->data[alist_simple->used - 1] + 42));
 }
 
 Test(metadata, rotate_simple) {
@@ -159,7 +166,7 @@ Test(metadata, rotate_simple) {
      *       /                 /
      *      3                 -2
      *     / \        or     / \
-     *    2   4             -1   1
+     *    2   4             -1  1
      *   /                 /
      *  1                 -1
      */
@@ -200,10 +207,19 @@ Test(metadata, rotate_complex_right) {
     md_get_works
 }
 
-Test(metadata, insert_simple) {
+#define assert_insert_simple                                                   \
+    MetaDataNode *root = md_simple->root;                                      \
+    cr_assert(eq(i64, root->relative_linenr, 4));                              \
+    cr_assert(eq(i64, root->left->relative_linenr, -2));                       \
+    cr_assert(eq(i64, root->left->left->relative_linenr, -1));                 \
+    cr_assert(eq(i64, root->left->right->relative_linenr, 1));                 \
+    cr_assert(eq(ptr, root->left->left->left, nullptr));                       \
+    cr_assert(eq(i64, root->right->relative_linenr, 2));                       \
+    cr_assert(eq(i64, root->right->left->relative_linenr, -1))
+
+Test(metadata, insert_simple_linenr) {
     md_insert(md_simple, 2);
-    MetaDataNode *root = md_simple->root;
-    /* if this is not balanced, it should give:
+    /* before it got balanced, it should give:
      *          4               4
      *         / \             / \
      *        3   6          -1   2
@@ -226,13 +242,105 @@ Test(metadata, insert_simple) {
      *       / \ /         / \ /
      *      1  3 5       -1  1 -1
      */
-    cr_assert(eq(i64, root->relative_linenr, 4));
 
-    cr_assert(eq(i64, root->left->relative_linenr, -2));
+    assert_insert_simple;
+}
+
+// the following should give the same results
+Test(metadata, insert_simple_tail) {
+    md_insert(md_simple, 1);
+    assert_insert_simple;
+}
+
+Test(metadata, insert_simple_root) {
+    md_insert(md_simple, 3);
+    assert_insert_simple;
+}
+
+Test(metadata, insert_simple_twice) {
+    md_insert(md_simple, 4);
+    MetaDataNode *root = md_simple->root;
+
+    /*        3              3
+     *       / \            / \
+     *      2   5    or   -1   2
+     *     /   / \        /   / \
+     *    1   4   6     -1  -1   1
+     */
+    cr_assert(eq(i64, root->relative_linenr, 3));
+    cr_assert(eq(i64, root->left->relative_linenr, -1));
     cr_assert(eq(i64, root->left->left->relative_linenr, -1));
-    cr_assert(eq(i64, root->left->right->relative_linenr, 1));
     cr_assert(eq(ptr, root->left->left->left, nullptr));
-
     cr_assert(eq(i64, root->right->relative_linenr, 2));
     cr_assert(eq(i64, root->right->left->relative_linenr, -1));
+    cr_assert(eq(i64, root->right->right->relative_linenr, 1));
+
+    md_insert(md_simple, 6);
+    /*        3              3
+     *       / \            / \
+     *      2   5    or   -1   2
+     *     /   / \        /   / \
+     *    1   4   7     -1  -1   2
+     *           /              /
+     *          6             -1
+     */
+    cr_assert(eq(i64, root->relative_linenr, 3)); // is 4
+    cr_assert(eq(i64, root->left->relative_linenr, -1));
+    cr_assert(eq(i64, root->left->left->relative_linenr, -1));
+    cr_assert(eq(ptr, root->left->left->left, nullptr));
+    cr_assert(eq(i64, root->right->relative_linenr, 2));
+    cr_assert(eq(i64, root->right->left->relative_linenr, -1));
+    cr_assert(eq(i64, root->right->right->relative_linenr, 2)); // is 1
+    cr_assert(eq(i64, root->right->right->left->relative_linenr, -1));
+    cr_assert(eq(ptr, root->right->right->right, nullptr));
+}
+
+Test(metadata, insert_simple_offset) {
+    md_insert(md_simple, 2);
+    MetaDataNode *root = md_simple->root;
+    /*          4         PRE: linenr    offset     POST: linenr    offset
+     *         / \                1    |   0                 1    |   0
+     *        2   6               2    |   564  ──────┐      2    |   563
+     *       / \ /                3    |   1156 ─────┐└───>  3    |   565
+     *      1  3 5                4    |   1724 ────┐└────>  4    |   1157
+     *                            5    |   2320 ───┐└─────>  5    |   1725
+     *                                             └──────>  6    |   2321
+     */
+    // test for relative values
+    cr_assert(eq(i64, root->relative_offset, 1157));
+    cr_assert(eq(i64, root->left->relative_offset, 563 - 1157));
+    cr_assert(eq(i64, root->left->left->relative_offset, 0 - 563));
+    cr_assert(eq(i64, root->left->right->relative_offset, 565 - 563));
+    cr_assert(eq(i64, root->right->relative_offset, 2321 - 1157));
+    cr_assert(eq(i64, root->right->left->relative_offset, 1725 - 2321));
+
+    /* test for actually getting these values */
+    cr_assert(eq(i64, md_get_line_start(md_simple, 1), 0));
+    /* the second line is inserted right after the first line ends, i.e.
+     * md_get_offset(md, 2) - 1
+     * that corresponds to the user pressing <cr> at the end on line 1
+     */
+    cr_assert(eq(i64, md_get_line_start(md_simple, 2), 563));
+    cr_assert(eq(i64, md_get_line_start(md_simple, 3), 565));
+    cr_assert(eq(i64, md_get_line_start(md_simple, 4), 1157));
+    cr_assert(eq(i64, md_get_line_start(md_simple, 5), 1725));
+    cr_assert(eq(i64, md_get_line_start(md_simple, 6), 2321));
+}
+
+Test(metadata, insert_complex_offset) {
+    for (size_t i = 0; i < alist->used; i++) {
+        md = md_new(src);
+        md_insert(md, i + 1);
+        for (size_t j = 0; j < i; j++) {
+            // [1..i) shouldn't change
+            cr_assert(eq(i64, md_get_line_start(md, j + 1), alist->data[j]));
+        }
+        // i should be original offset - 1
+        cr_assert(eq(i64, md_get_line_start(md, i + 1), alist->data[i] - 1));
+        for (size_t k = i + 1; k <= alist->used; k++) {
+            // (j..] should increment by 1, and be offsetted by 1
+            cr_assert(
+                eq(i64, md_get_line_start(md, k + 1), alist->data[k - 1] + 1));
+        }
+    }
 }

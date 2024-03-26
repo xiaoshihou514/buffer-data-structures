@@ -32,12 +32,11 @@ test: $(TESTBINS)
 		fi; \
 	done
 	@echo "All tests passed. Generating coverage report..."
-	@$(MAKE) covreport
 
 $(TESTDESTDIR)/%: test/%.c lib
 	$(CC) $(CFLAGS) $< $(LIBOBJS) -o $@ -lcriterion
 
-covreport: $(TESTCOVS)
+covreport: test $(TESTCOVS)
 	gcovr --html-details build/report/index.html --html-theme github.dark-green -r .
 
 $(LIBDESTDIR)/%.gcov:

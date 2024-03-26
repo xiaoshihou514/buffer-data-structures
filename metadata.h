@@ -3,9 +3,8 @@
 
 struct MetaDataNode {
     ssize_t relative_linenr;
-    // byte offset of linenr in the gap buffer (does not take account of gap
-    // position)
     ssize_t relative_offset;
+
     struct MetaDataNode *left;
     struct MetaDataNode *right;
     struct MetaDataNode *parent;
@@ -21,12 +20,13 @@ typedef struct {
 MetaData *md_new(wchar_t src[static 1]);
 
 /*
- * get byte offset of linenr
+ * get byte offset of the position where the `linenr`-th line ends
+ * gap_buffer[r] = L'\n' (roughly)
  */
-size_t md_get_offset(MetaData *md, size_t linenr);
+size_t md_get_line_start(MetaData *md, size_t linenr);
 
 /*
- * shift every line bigger than linenr by amount
+ * shift every line bigger or equal to linenr by amount
  */
 void md_shift(MetaData *md, size_t linenr, ssize_t amount);
 

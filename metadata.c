@@ -50,7 +50,7 @@ MetaData *md_new(wchar_t src[static 1]) {
 }
 
 // get byte offset of linenr
-size_t md_get_offset(MetaData *md, size_t linenr) {
+size_t md_get_line_start(MetaData *md, size_t linenr) {
     if (linenr > md->rows) {
         // invalid
         return -1;
@@ -99,15 +99,14 @@ void md_shift(MetaData *md, size_t linenr, ssize_t amount) {
     while (node->parent) {
         child = node;
         node = node->parent;
-        // child is left of node and we reached child via its right node
         if (child == node->left) {
+            // child is left of node and we reached child via its right node
             if (!left) {
                 child->relative_offset -= amount;
             }
             left = true;
-        }
-        // child is right of node and we reached child via its left node
-        if (child == node->right) {
+        } else {
+            // child is right of node and we reached child via its left node
             if (left) {
                 child->relative_offset += amount;
             }
@@ -183,7 +182,6 @@ MetaDataNode *rotate_right(MetaDataNode *b) {
     return a;
 }
 
-// BUG: double free, must still have dangling pointers somewhere
 void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
                               size_t node_right_depth, bool initial_left,
                               MetaData *md) {
@@ -192,6 +190,7 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
     bool left = initial_left;
     bool left_of_parent;
     MetaDataNode *node = target;
+    MetaDataNode *parent;
 
     while (node->parent) {
         // in this loop we make `node` balanced
@@ -208,16 +207,16 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
 
         // see which parent pointer we have to update
         left_of_parent = node->parent->left == node;
-        MetaDataNode *parent = node->parent;
+        parent = node->parent;
         if (left_depth > right_depth + 1) {
             // rotate right to fix this
             for (size_t i = 0; i < (left_depth - right_depth) / 2; i++) {
                 node = rotate_right(node);
             }
             if (left_of_parent) {
-                node->parent->left = node;
+                parent->left = node;
             } else {
-                node->parent->right = node;
+                parent->right = node;
             }
             node->parent = parent;
         } else if (right_depth > left_depth + 1) {
@@ -226,15 +225,15 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
                 node = rotate_left(node);
             }
             if (left_of_parent) {
-                node->parent->left = node;
+                parent->left = node;
             } else {
-                node->parent->right = node;
+                parent->right = node;
             }
             node->parent = parent;
         }
 
         left = left_of_parent;
-        node = node->parent;
+        node = parent;
     }
 
     // now we should have reached the root node, this is a special case since
@@ -272,7 +271,7 @@ void md_insert(MetaData *md, size_t linenr) {
     // update count
     md->rows++;
     // if tree empty
-    if (md->root == nullptr && linenr == 1) {
+    if (!md->root && linenr == 1) {
         md->root = malloc(sizeof(MetaDataNode));
         md->root->left = nullptr;
         md->root->right = nullptr;
@@ -282,7 +281,6 @@ void md_insert(MetaData *md, size_t linenr) {
         return;
     }
     // if tree not empty
-    // increment the offset and relative number of [linenr..] by 1
     MetaDataNode *target;
     MetaDataNode *node = md->root;
     ssize_t row_acc = 0;
@@ -307,15 +305,14 @@ void md_insert(MetaData *md, size_t linenr) {
     while (node->parent) {
         child = node;
         node = node->parent;
-        // child is left of node and we reached child via its right node
         if (child == node->left) {
+            // child is left of node and we reached child via its right node
             if (!left) {
                 child->relative_linenr--;
             }
             left = true;
-        }
-        // child is right of node and we reached child via its left node
-        if (child == node->right) {
+        } else {
+            // child is right of node and we reached child via its left node
             if (left) {
                 child->relative_linenr++;
             }
@@ -329,13 +326,19 @@ void md_insert(MetaData *md, size_t linenr) {
     // shift relative offset
     md_shift(md, linenr + 1, 1);
 
-    // correct error
-    target->left->relative_linenr++;
-
     // insert and rotate
     MetaDataNode *new = malloc(sizeof(MetaDataNode));
+    // correct error
+
+    if (target->left) {
+        // fix error made in the earliler while loop
+        target->left->relative_linenr++;
+        target->left->relative_offset += 2;
+    }
+
+    // FIXME: relative offset
+    new->relative_offset = -2;
     new->relative_linenr = -1;
-    new->relative_offset = target->left->relative_offset + 1;
     new->parent = target;
     // don' forget the original left node, we can't lose it!
     new->left = target->left;
@@ -352,7 +355,7 @@ void md_insert(MetaData *md, size_t linenr) {
 void md_delete(MetaData *md, size_t linenr);
 
 void md_node_free(MetaDataNode *node) {
-    if (node != nullptr) {
+    if (node) {
         md_node_free(node->left);
         md_node_free(node->right);
         free(node);
@@ -360,6 +363,8 @@ void md_node_free(MetaDataNode *node) {
 }
 
 void md_free(MetaData *md) {
-    md_node_free(md->root);
-    free(md);
+    if (md) {
+        md_node_free(md->root);
+        free(md);
+    }
 }

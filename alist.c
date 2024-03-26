@@ -22,7 +22,7 @@ void alist_push(ArrayList alist[static 1], ssize_t item) {
 }
 
 void alist_free(ArrayList *alist) {
-    if (alist != nullptr) {
+    if (alist) {
         free(alist->data);
         free(alist);
     }
