@@ -4,10 +4,9 @@
 #include <stdlib.h>
 #include <wchar.h>
 
-/*
- * start inclusive, end exclusive
- */
-MetaDataNode *create_node(ssize_t index[static 1], size_t start, size_t end,
+/* node helper methods */
+// start inclusive, end exclusive
+MetaDataNode *node_create(ssize_t index[static 1], size_t start, size_t end,
                           size_t parent_offset, MetaDataNode *parent,
                           ssize_t parent_index) {
     if (start == end) {
@@ -24,73 +23,46 @@ MetaDataNode *create_node(ssize_t index[static 1], size_t start, size_t end,
         result->relative_offset = idx_offset - parent_offset;
         result->parent = parent;
         result->left =
-            create_node(index, start, idx, idx_offset, result, idx + 1);
+            node_create(index, start, idx, idx_offset, result, idx + 1);
         result->right =
-            create_node(index, idx + 1, end, idx_offset, result, idx + 1);
+            node_create(index, idx + 1, end, idx_offset, result, idx + 1);
         return result;
     }
 }
 
-MetaData *md_new(wchar_t src[static 1]) {
-    MetaData *result = malloc(sizeof(MetaData));
-    ArrayList *alist = alist_new();
-    // put all offsets in the list
-    wchar_t *idx = src;
-    while (idx != (void *)0x4) {
-        alist_push(alist, (ssize_t)(idx - src - 1) * sizeof(wchar_t));
-        idx = wcsstr(idx, L"\n") + 1;
-    }
-    // fix error, it's -4 beforehand
-    alist->data[0] += 4;
-    // create tree structure recursively
-    result->root = create_node(alist->data, 0, alist->used, 0, nullptr, 0);
-    result->rows = alist->used;
-    alist_free(alist);
-    return result;
-}
-
-// get byte offset of linenr
-size_t md_get_line_start(MetaData *md, size_t linenr) {
-    if (linenr > md->rows) {
-        // invalid
-        return -1;
-    }
+MetaDataNode *node_seek(MetaData *md, size_t linenr) {
     MetaDataNode *node = md->root;
     ssize_t row_acc = 0;
-    ssize_t acc = 0;
     while (node) {
-        acc += node->relative_offset;
         row_acc += node->relative_linenr;
         if ((size_t)row_acc == linenr) {
             break;
-        } else if ((size_t)row_acc < linenr) {
-            node = node->right;
-        } else {
+        } else if ((size_t)row_acc > linenr) {
             node = node->left;
+        } else {
+            node = node->right;
         }
     }
-    // it's safe to do so since we can guarantee it's positive
-    return (size_t)acc;
+    return node;
 }
 
+size_t node_get_depth(MetaDataNode *node) {
+    if (!node) {
+        return 0;
+    }
+    size_t left = node_get_depth(node->left);
+    size_t right = node_get_depth(node->right);
+    return (left > right) ? left + 1 : right + 1;
+}
+
+/* md helper methods */
 // shift every line bigger or equal to linenr by amount
-void md_shift(MetaData *md, size_t linenr, ssize_t amount) {
+void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount) {
     if (linenr > md->rows) {
         // invalid
         return;
     }
-    MetaDataNode *node = md->root;
-    ssize_t row_acc = 0;
-    while (node) {
-        row_acc += node->relative_linenr;
-        if ((size_t)row_acc == linenr) {
-            break;
-        } else if ((size_t)row_acc < linenr) {
-            node = node->right;
-        } else {
-            node = node->left;
-        }
-    }
+    MetaDataNode *node = node_seek(md, linenr);
     MetaDataNode *child = node->left;
     if (child) {
         child->relative_offset -= amount;
@@ -118,13 +90,35 @@ void md_shift(MetaData *md, size_t linenr, ssize_t amount) {
     }
 }
 
-size_t node_get_depth(MetaDataNode *node) {
-    if (!node) {
-        return 0;
+/*
+ * shift linenr of every node larger or equal then the given node by amount
+ */
+void md_shift_linenr(MetaDataNode *node, ssize_t amount) {
+    MetaDataNode *child = node->left;
+    if (child) {
+        child->relative_linenr -= amount;
     }
-    size_t left = node_get_depth(node->left);
-    size_t right = node_get_depth(node->right);
-    return (left > right) ? left + 1 : right + 1;
+    bool left = true;
+    while (node->parent) {
+        child = node;
+        node = node->parent;
+        if (child == node->left) {
+            // child is left of node and we reached child via its right node
+            if (!left) {
+                child->relative_linenr -= amount;
+            }
+            left = true;
+        } else {
+            // child is right of node and we reached child via its left node
+            if (left) {
+                child->relative_linenr += amount;
+            }
+            left = false;
+        }
+    }
+    if (left) {
+        node->relative_linenr += amount;
+    }
 }
 
 // returns the new root node
@@ -263,6 +257,88 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
     }
 }
 
+// PRE: the current node will be non-null but at least one of its subtrees will
+// be null
+#define update(parent_direction, child_direction)                              \
+    parent->parent_direction = node->child_direction;                          \
+    if (node->child_direction) {                                               \
+        node->child_direction->parent = parent;                                \
+    }
+void remove_single_node(MetaData *md, MetaDataNode *node) {
+    MetaDataNode *parent = node->parent;
+    if (parent) {
+        if (node == parent->left) {
+            if (!node->left) {
+                update(left, right);
+            } else {
+                update(left, left);
+            }
+        } else {
+            if (!node->left) {
+                update(right, right);
+            } else {
+                update(right, left);
+            }
+        }
+    } else {
+        if (!node->left) {
+            md->root = node->right;
+            if (node->right) {
+                node->right->parent = nullptr;
+            }
+        } else {
+            md->root = node->left;
+            if (node->left) {
+                node->left->parent = nullptr;
+            }
+        }
+    }
+    free(node);
+}
+
+/* api specified methods */
+MetaData *md_new(wchar_t src[static 1]) {
+    MetaData *result = malloc(sizeof(MetaData));
+    ArrayList *alist = alist_new();
+    // put all offsets in the list
+    wchar_t *idx = src;
+    while (idx != (void *)0x4) {
+        alist_push(alist, (ssize_t)(idx - src - 1) * sizeof(wchar_t));
+        idx = wcsstr(idx, L"\n") + 1;
+    }
+    // fix error, it's -4 beforehand
+    alist->data[0] += 4;
+    // create tree structure recursively
+    result->root = node_create(alist->data, 0, alist->used, 0, nullptr, 0);
+    result->rows = alist->used;
+    alist_free(alist);
+    return result;
+}
+
+// get byte offset of linenr
+size_t md_get_line_start(MetaData *md, size_t linenr) {
+    if (linenr > md->rows) {
+        // invalid
+        return -1;
+    }
+    MetaDataNode *node = md->root;
+    ssize_t row_acc = 0;
+    ssize_t acc = 0;
+    while (node) {
+        acc += node->relative_offset;
+        row_acc += node->relative_linenr;
+        if ((size_t)row_acc == linenr) {
+            break;
+        } else if ((size_t)row_acc < linenr) {
+            node = node->right;
+        } else {
+            node = node->left;
+        }
+    }
+    // it's safe to do so since we can guarantee it's positive
+    return (size_t)acc;
+}
+
 void md_insert(MetaData *md, size_t linenr) {
     if (linenr > md->rows) {
         // invalid
@@ -281,50 +357,14 @@ void md_insert(MetaData *md, size_t linenr) {
         return;
     }
     // if tree not empty
-    MetaDataNode *target;
-    MetaDataNode *node = md->root;
-    ssize_t row_acc = 0;
-    while (node) {
-        row_acc += node->relative_linenr;
-        if ((size_t)row_acc == linenr) {
-            break;
-        } else if ((size_t)row_acc > linenr) {
-            node = node->left;
-        } else {
-            node = node->right;
-        }
-    }
-    // save it for later
-    target = node;
-    MetaDataNode *child = node->left;
-    if (child) {
-        child->relative_linenr--;
-    }
-    bool left = true;
+    MetaDataNode *target = node_seek(md, linenr);
+    MetaDataNode *node = target;
+
     // shift relative linenr
-    while (node->parent) {
-        child = node;
-        node = node->parent;
-        if (child == node->left) {
-            // child is left of node and we reached child via its right node
-            if (!left) {
-                child->relative_linenr--;
-            }
-            left = true;
-        } else {
-            // child is right of node and we reached child via its left node
-            if (left) {
-                child->relative_linenr++;
-            }
-            left = false;
-        }
-    }
-    if (left) {
-        node->relative_linenr++;
-    }
+    md_shift_linenr(node, 1);
 
     // shift relative offset
-    md_shift(md, linenr + 1, 1);
+    md_shift_offset(md, linenr + 1, 1);
 
     // insert and rotate
     MetaDataNode *new = malloc(sizeof(MetaDataNode));
@@ -336,7 +376,7 @@ void md_insert(MetaData *md, size_t linenr) {
         target->left->relative_offset += 2;
     }
 
-    // FIXME: relative offset
+    // magical number, check the charts and think about them!
     new->relative_offset = -2;
     new->relative_linenr = -1;
     new->parent = target;
@@ -351,8 +391,44 @@ void md_insert(MetaData *md, size_t linenr) {
     balance_ancestor_of_node(new, node_get_depth(new->left), 0, true, md);
 }
 
-// delete the given line
-void md_delete(MetaData *md, size_t linenr);
+// delete the given line break
+void md_delete_line_break(MetaData *md, size_t linenr) {
+    if (linenr > md->rows || linenr == 0) {
+        // invalid
+        return;
+    }
+    // update count
+    md->rows--;
+
+    MetaDataNode *target = node_seek(md, linenr);
+
+    // update the relative linenr first
+    md_shift_linenr(target->parent, -1);
+
+    // update relative offset
+    md_shift_offset(md, linenr, -1);
+
+    // simple case: one of the branches is null
+    if (!target->left || !target->right) {
+        remove_single_node(md, target);
+        return;
+    }
+    // if it's not the simple case, we have to create it on our own
+    // we find the next smallest element in the subtrees
+    MetaDataNode *node = target->right;
+    while (node->left) {
+        node = node->left;
+    }
+    // now we "replace" target with this element we found
+    target->relative_offset = node->relative_offset;
+    target->relative_linenr = node->relative_linenr;
+    // notice now this element is the simple case, before we remove it, we
+    // record its parent so we can rebalance it later
+    MetaDataNode *unbalanced = target->parent;
+    remove_single_node(md, target);
+    balance_ancestor_of_node(unbalanced, 0, node_get_depth(target->right) + 1,
+                             true, md);
+}
 
 void md_node_free(MetaDataNode *node) {
     if (node) {

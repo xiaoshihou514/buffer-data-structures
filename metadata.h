@@ -28,25 +28,28 @@ size_t md_get_line_start(MetaData *md, size_t linenr);
 /*
  * shift every line bigger or equal to linenr by amount
  */
-void md_shift(MetaData *md, size_t linenr, ssize_t amount);
+void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount);
 
 /*
  * insert a single line right after the current offset of linenr
- * e.g. for a ten line document, inserting at 7 would shift the current 7,8,9,10
- * offset by 1 and make them 8,9,10,100, this function also shifts the
+ * e.g. for a 10 line document, inserting at 7 would shift the current 7,8,9,10
+ * offset by 1 and make them 8,9,10,11, this function also shifts the
  * nodes after for you
  */
 void md_insert(MetaData *md, size_t linenr);
 
 /*
- * delete the given line
+ * delete the given "linenr"-th line break
+ * e.g. for a 10 line document, deleting at 7 would shift 8,9,10 to be 7,8,9,
+ * and shift their relative offset by -1
  */
-void md_delete(MetaData *md, size_t linenr);
+void md_delete_line_break(MetaData *md, size_t linenr);
 
 /*
  * helper methods
  */
 MetaDataNode *rotate_left(MetaDataNode *a);
 MetaDataNode *rotate_right(MetaDataNode *a);
+void remove_single_node(MetaData *md, MetaDataNode *node);
 
 void md_free(MetaData *md);

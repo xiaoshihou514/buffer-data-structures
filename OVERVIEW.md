@@ -45,10 +45,16 @@ We put meta data like line positions in a tree, the tree is an avl tree with rel
   It's hard to explain, check out the picture [here](https://github.com/xiaoshihou514/buffer-data-structures/blob/main/resources/metadata_tree_shifting.png)
 
 - insert_line(at)
+
   complexity: O((log n)^2)
+
   avl tree insertion
 
 - delete_line(at)
+
+  complexity: O((log n)^2)
+
+  avl tree deletion
 
 ### rope
 

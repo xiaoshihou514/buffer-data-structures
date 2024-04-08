@@ -66,7 +66,7 @@ void teardown(void) {
 
 TestSuite(metadata, .init = setup, .fini = teardown);
 
-Test(metadata, new) {
+Test(metadata, new_simple) {
     /* should give
      *          3                      3
      *        /   \                  /   \
@@ -116,7 +116,7 @@ Test(metadata, get){md_get_works}
 Test(metadata, shift) {
     for (size_t i = 0; i < alist_simple->used; i++) {
         md_simple = md_new(src_simple);
-        md_shift(md_simple, i + 1, 42);
+        md_shift_offset(md_simple, i + 1, 42);
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
@@ -134,7 +134,7 @@ Test(metadata, shift) {
     // same test for a more complicated structure,and this time decrementing
     for (size_t i = 0; i < alist->used; i++) {
         md = md_new(src);
-        md_shift(md, i + 1, -42);
+        md_shift_offset(md, i + 1, -42);
 
         // everything before i should stay the same
         for (size_t j = 0; j < i; j++) {
@@ -150,7 +150,7 @@ Test(metadata, shift) {
 }
 
 Test(metadata, shift_tail) {
-    md_shift(md_simple, alist_simple->used, 42);
+    md_shift_offset(md_simple, alist_simple->used, 42);
     for (size_t i = 0; i < alist_simple->used - 1; i++) {
         cr_assert(
             eq(sz, md_get_line_start(md_simple, i + 1), alist_simple->data[i]));
@@ -342,5 +342,50 @@ Test(metadata, insert_complex_offset) {
             cr_assert(
                 eq(i64, md_get_line_start(md, k + 1), alist->data[k - 1] + 1));
         }
+    }
+}
+
+Test(metadata, delete_simple) {
+    md_delete_line_break(md_simple, 2);
+    MetaDataNode *root = md_simple->root;
+    /* should give
+     *    2            2
+     *   / \          / \
+     *  1   4   or  -1   2
+     *     /            /
+     *    3           -1
+     */
+    cr_assert(eq(i64, root->relative_linenr, 2));
+    cr_assert(eq(i64, root->left->relative_linenr, -1));
+    cr_assert(eq(i64, root->right->relative_linenr, 2));
+    cr_assert(eq(i64, root->right->left->relative_linenr, -1));
+}
+
+// FIXME: incorrect
+Test(metadata, delete) {
+    for (size_t i = 1; i < alist->used; i++) {
+        md = md_new(src);
+        md_delete_line_break(md, i);
+        cr_log_warn("deleted line %zu", i);
+        for (size_t j = 1; j < i; j++) {
+            // [1..i) shouldn't change
+
+            cr_log_warn("md[%zu] shouldn't change: expected %zu, got %zu", j,
+                        alist->data[j - 1], md_get_line_start(md, j));
+
+            // cr_assert(eq(i64, md_get_line_start(md, j), alist->data[j - 1]));
+        }
+        for (size_t k = i; k < alist->used; k++) {
+
+            cr_log_warn(
+                "md[%zu] should be md_old[%zu]-1: expected %zu, got %zu", k,
+                k + 1, alist->data[k] - 1, md_get_line_start(md, k));
+
+            // forall k in (i..]
+            // md[k] should be md_old[k+1]-1
+            cr_assert(eq(i64, md_get_line_start(md, k), alist->data[k] - 1));
+        }
+        // the last one shouldn't exist anymore
+        cr_assert(eq(i64, md_get_line_start(md, alist->used), -1));
     }
 }
