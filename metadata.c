@@ -57,12 +57,13 @@ size_t node_get_depth(MetaDataNode *node) {
 
 /* md helper methods */
 // shift every line bigger or equal to linenr by amount
-void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount) {
+void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount,
+                     MetaDataNode *needle) {
     if (linenr > md->rows) {
         // invalid
         return;
     }
-    MetaDataNode *node = node_seek(md, linenr);
+    MetaDataNode *node = needle ? needle : node_seek(md, linenr);
     MetaDataNode *child = node->left;
     if (child) {
         child->relative_offset -= amount;
@@ -93,23 +94,25 @@ void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount) {
 /*
  * shift linenr of every node larger or equal then the given node by amount
  */
-void md_shift_linenr(MetaDataNode *node, ssize_t amount) {
-    MetaDataNode *child = node->left;
+void md_shift_linenr(MetaData *md, size_t linenr, ssize_t amount,
+                     MetaDataNode *needle) {
+    needle = needle ? needle : node_seek(md, linenr);
+    MetaDataNode *child = needle->left;
     if (child) {
         child->relative_linenr -= amount;
     }
     bool left = true;
-    while (node->parent) {
-        child = node;
-        node = node->parent;
-        if (child == node->left) {
-            // child is left of node and we reached child via its right node
+    while (needle->parent) {
+        child = needle;
+        needle = needle->parent;
+        if (child == needle->left) {
+            // child is left of needle and we reached child via its right node
             if (!left) {
                 child->relative_linenr -= amount;
             }
             left = true;
         } else {
-            // child is right of node and we reached child via its left node
+            // child is right of needle and we reached child via its left node
             if (left) {
                 child->relative_linenr += amount;
             }
@@ -117,7 +120,7 @@ void md_shift_linenr(MetaDataNode *node, ssize_t amount) {
         }
     }
     if (left) {
-        node->relative_linenr += amount;
+        needle->relative_linenr += amount;
     }
 }
 
@@ -263,7 +266,9 @@ void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
     parent->parent_direction = node->child_direction;                          \
     if (node->child_direction) {                                               \
         node->child_direction->parent = parent;                                \
+        node->child_direction->relative_offset += node->relative_offset;       \
     }
+
 void remove_single_node(MetaData *md, MetaDataNode *node) {
     MetaDataNode *parent = node->parent;
     if (parent) {
@@ -294,6 +299,41 @@ void remove_single_node(MetaData *md, MetaDataNode *node) {
         }
     }
     free(node);
+}
+
+// PRE: to is a parent of from
+// POST: from = to = safe_swapped(from)
+void md_node_mov(MetaDataNode *to, MetaDataNode *from) {
+    // this is non-trivial because to do a safe swap we have to alter the
+    // relative stuff along the way
+    ssize_t original_relative_linenr = to->relative_linenr;
+    ssize_t original_relative_offset = to->relative_offset;
+    MetaDataNode *temp = from->parent;
+
+    // add up along the way
+    while (temp != to) {
+        from->relative_linenr += temp->relative_linenr;
+        from->relative_offset += temp->relative_offset;
+        temp = temp->parent;
+    }
+    from->relative_linenr += temp->relative_linenr;
+    from->relative_offset += temp->relative_offset;
+    to->relative_linenr = from->relative_linenr;
+    to->relative_offset = from->relative_offset;
+
+    // alter the children
+    if (to->left) {
+        to->left->relative_linenr += original_relative_linenr;
+        to->left->relative_offset += original_relative_offset;
+        to->left->relative_linenr -= to->relative_linenr;
+        to->left->relative_offset -= to->relative_offset;
+    }
+    if (to->right) {
+        to->right->relative_linenr += original_relative_linenr;
+        to->right->relative_offset += original_relative_offset;
+        to->right->relative_linenr -= to->relative_linenr;
+        to->right->relative_offset -= to->relative_offset;
+    }
 }
 
 /* api specified methods */
@@ -361,10 +401,10 @@ void md_insert(MetaData *md, size_t linenr) {
     MetaDataNode *node = target;
 
     // shift relative linenr
-    md_shift_linenr(node, 1);
+    md_shift_linenr(md, linenr, 1, node);
 
     // shift relative offset
-    md_shift_offset(md, linenr + 1, 1);
+    md_shift_offset(md, linenr + 1, 1, nullptr);
 
     // insert and rotate
     MetaDataNode *new = malloc(sizeof(MetaDataNode));
@@ -403,14 +443,17 @@ void md_delete_line_break(MetaData *md, size_t linenr) {
     MetaDataNode *target = node_seek(md, linenr);
 
     // update the relative linenr first
-    md_shift_linenr(target->parent, -1);
+    md_shift_linenr(md, linenr + 1, -1, target->parent);
 
     // update relative offset
-    md_shift_offset(md, linenr, -1);
+    md_shift_offset(md, linenr, -1, target);
 
     // simple case: one of the branches is null
     if (!target->left || !target->right) {
         remove_single_node(md, target);
+        balance_ancestor_of_node(target, node_get_depth(target->left),
+                                 node_get_depth(target->right),
+                                 target == target->parent->left, md);
         return;
     }
     // if it's not the simple case, we have to create it on our own
@@ -419,14 +462,15 @@ void md_delete_line_break(MetaData *md, size_t linenr) {
     while (node->left) {
         node = node->left;
     }
-    // now we "replace" target with this element we found
-    target->relative_offset = node->relative_offset;
-    target->relative_linenr = node->relative_linenr;
+
+    // now we swap the target with this element we found
+    md_node_mov(target, node);
+
     // notice now this element is the simple case, before we remove it, we
     // record its parent so we can rebalance it later
-    MetaDataNode *unbalanced = target->parent;
-    remove_single_node(md, target);
-    balance_ancestor_of_node(unbalanced, 0, node_get_depth(target->right) + 1,
+    MetaDataNode *unbalanced = node->parent;
+    remove_single_node(md, node);
+    balance_ancestor_of_node(unbalanced, 0, node_get_depth(unbalanced->right),
                              true, md);
 }
 
