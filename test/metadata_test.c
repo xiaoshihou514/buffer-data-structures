@@ -1,5 +1,6 @@
 #include "../alist.h"
 #include "../metadata.h"
+#include "criterion/logging.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
 #include <wchar.h>
@@ -441,7 +442,11 @@ Test(metadata, delete_simple) {
     assert_eq_i64(root->right->left->relative_offset, -596);
 }
 
+// FIXME: fails
 Test(metadata, delete_any_complex) {
+    for (size_t i = 0; i < alist->used; i++) {
+        cr_log_warn("line start of %zu: %zu", i + 1, alist->data[i]);
+    }
     for (size_t i = 1; i < alist->used; i++) {
         md = md_new(src);
         md_delete_line_break(md, i);

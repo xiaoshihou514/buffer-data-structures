@@ -31,6 +31,7 @@ We put meta data like line positions in a tree, the tree is an avl tree with rel
   complexity: O(n)
 
   typical divide and conquer, we transform an array into a sorted heap
+  [picture](https://github.com/xiaoshihou514/buffer-data-structures/blob/main/resources/md_new.png)
 
 - get(line_number);
 
@@ -42,7 +43,7 @@ We put meta data like line positions in a tree, the tree is an avl tree with rel
 
   complexity: O(log n)
 
-  It's hard to explain, check out the picture [here](https://github.com/xiaoshihou514/buffer-data-structures/blob/main/resources/metadata_tree_shifting.png)
+  [picture](https://github.com/xiaoshihou514/buffer-data-structures/blob/main/resources/md_shift.png)
 
 - insert_line(at)
 
