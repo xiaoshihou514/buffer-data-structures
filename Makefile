@@ -31,7 +31,7 @@ test: $(TESTBINS)
 			exit 1; \
 		fi; \
 	done
-	@echo "All tests passed. Generating coverage report..."
+	@echo "All tests passed!"
 
 $(TESTDESTDIR)/%: test/%.c lib
 	$(CC) $(CFLAGS) $< $(LIBOBJS) -o $@ -lcriterion

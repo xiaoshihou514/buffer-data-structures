@@ -443,7 +443,7 @@ void md_delete_line_break(MetaData *md, size_t linenr) {
     MetaDataNode *target = node_seek(md, linenr);
 
     // update the relative linenr first
-    md_shift_linenr(md, linenr + 1, -1, target->parent);
+    md_shift_linenr(md, linenr + 1, -1, nullptr);
 
     // update relative offset
     md_shift_offset(md, linenr, -1, target);
