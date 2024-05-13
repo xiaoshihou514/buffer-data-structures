@@ -2,6 +2,9 @@
 #include "metadata.h"
 #include <wchar.h>
 
+#ifndef GAP_BUFFER_H
+#define GAP_BUFFER_H
+
 typedef struct {
     wchar_t *data;
     size_t gap_start;
@@ -12,6 +15,7 @@ typedef struct {
 
 GapBuffer *gb_new(wchar_t source[static 1]);
 
+/* 1-indexed, inclusive */
 wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
                       size_t end_row, size_t end_col);
 
@@ -22,3 +26,5 @@ ArrayList *gb_search(GapBuffer *gb, char *needle);
 void gb_free(GapBuffer *gb);
 
 #define wsize sizeof(wchar_t)
+
+#endif

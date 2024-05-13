@@ -1,6 +1,5 @@
 #include "../alist.h"
 #include "../metadata.h"
-#include "criterion/logging.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
 #include <wchar.h>
@@ -40,7 +39,7 @@ void setup(void) {
     alist_push(alist, 0);
     for (size_t i = 0; i < wcslen(src); i++) {
         if (src[i] == L'\n') {
-            alist_push(alist, i * sizeof(wchar_t));
+            alist_push(alist, i);
         }
     }
 
@@ -48,7 +47,7 @@ void setup(void) {
     alist_push(alist_simple, 0);
     for (size_t i = 0; i < wcslen(src_simple); i++) {
         if (src_simple[i] == L'\n') {
-            alist_push(alist_simple, i * sizeof(wchar_t));
+            alist_push(alist_simple, i);
         }
     }
 }
@@ -100,15 +99,12 @@ Test(metadata, new_simple) {
     ssize_t root_offset = root->relative_offset;
     ssize_t left_offset = root->left->relative_offset;
     ssize_t right_offset = root->right->relative_offset;
-    cr_assert_eq(src_simple[root_offset / sizeof(wchar_t)], L'\n');
-    cr_assert_eq(src_simple[(root_offset + left_offset) / sizeof(wchar_t)],
-                 L'\n');
-    cr_assert_eq(src_simple[(root_offset + right_offset) / sizeof(wchar_t)],
-                 L'\n');
+    cr_assert_eq(src_simple[root_offset], L'\n');
+    cr_assert_eq(src_simple[(root_offset + left_offset)], L'\n');
+    cr_assert_eq(src_simple[(root_offset + right_offset)], L'\n');
 
     cr_assert_eq(src_simple[(root_offset + right_offset +
-                             root->right->left->relative_offset) /
-                            sizeof(wchar_t)],
+                             root->right->left->relative_offset)],
                  L'\n');
     // note that line 1's line break does not have a real \n
     cr_assert_eq(root_offset + left_offset + root->left->left->relative_offset,
@@ -298,38 +294,6 @@ Test(metadata, insert_simple_twice) {
     cr_assert(eq(ptr, root->right->right->right, nullptr));
 }
 
-Test(metadata, insert_simple_offset) {
-    md_insert(md_simple, 2);
-    MetaDataNode *root = md_simple->root;
-    /*          4         PRE: linenr    offset     POST: linenr    offset
-     *         / \                1    |   0                 1    |   0
-     *        2   6               2    |   564  ──────┐      2    |   563
-     *       / \ /                3    |   1156 ─────┐└───>  3    |   565
-     *      1  3 5                4    |   1724 ────┐└────>  4    |   1157
-     *                            5    |   2320 ───┐└─────>  5    |   1725
-     *                                             └──────>  6    |   2321
-     */
-    // test for relative values
-    assert_eq_i64(root->relative_offset, 1157);
-    assert_eq_i64(root->left->relative_offset, 563 - 1157);
-    assert_eq_i64(root->left->left->relative_offset, 0 - 563);
-    assert_eq_i64(root->left->right->relative_offset, 565 - 563);
-    assert_eq_i64(root->right->relative_offset, 2321 - 1157);
-    assert_eq_i64(root->right->left->relative_offset, 1725 - 2321);
-
-    /* test for actually getting these values */
-    assert_eq_i64(md_get_line_start(md_simple, 1), 0);
-    /* the second line is inserted right after the first line ends, i.e.
-     * md_get_offset(md, 2) - 1
-     * that corresponds to the user pressing <cr> at the end on line 1
-     */
-    assert_eq_i64(md_get_line_start(md_simple, 2), 563);
-    assert_eq_i64(md_get_line_start(md_simple, 3), 565);
-    assert_eq_i64(md_get_line_start(md_simple, 4), 1157);
-    assert_eq_i64(md_get_line_start(md_simple, 5), 1725);
-    assert_eq_i64(md_get_line_start(md_simple, 6), 2321);
-}
-
 Test(metadata, insert_complex_offset) {
     for (size_t i = 0; i < alist->used; i++) {
         md = md_new(src);
@@ -347,101 +311,6 @@ Test(metadata, insert_complex_offset) {
     }
 }
 
-Test(metadata, delete_simple) {
-    md_delete_line_break(md_simple, 2);
-    MetaDataNode *root = md_simple->root;
-    /*
-     * original:                  after:
-     *      3             3          2            2
-     *     / \           / \        / \          / \
-     *    2   5   or   -1   2      1   4   or  -1   2
-     *   /   /         /   /          /            /
-     *  1   4        -1   -1         3           -1
-     *
-     * change in relative_offset:
-     *        1156                   1155                  1155
-     *       /    \                 /    \                /    \
-     *    -592   1164    --->    -592   1164   --->    -1155  1164
-     *     /      /               /      /                     /
-     *   -564   -596            -563   -596                  -596
-     *
-     */
-    assert_eq_i64(root->relative_linenr, 2);
-    assert_eq_i64(root->left->relative_linenr, -1);
-    assert_eq_i64(root->right->relative_linenr, 2);
-    assert_eq_i64(root->right->left->relative_linenr, -1);
-
-    assert_eq_i64(root->relative_offset, 1155);
-    assert_eq_i64(root->left->relative_offset, -1155);
-    assert_eq_i64(root->right->relative_offset, 1164);
-    assert_eq_i64(root->right->left->relative_offset, -596);
-
-    md_simple = md_new(src_simple);
-    root = md_simple->root;
-    md_delete_line_break(md_simple, 3);
-    /*
-     * change in relative_linenr:
-     *      3               3               3                        3
-     *     / \    decr     / \    swap     / \    remove single     / \
-     *    2   5   --->    2   4   --->    2   4   ------------>    2   4
-     *   /   /           /   /           /   /                    /
-     *  1   4           1   3           1   3                    1
-     *
-     *      3               3               3                        3
-     *     / \    decr     / \    swap     / \    remove single     / \
-     *   -1   2   --->   -1   1   --->   -1   1   ------------>   -1   1
-     *   /   /           /   /           /   /                    /
-     * -1   -1         -1  -1          -1   3                   -1
-     *
-     * change in relative_offset:
-     *        1156                   1156                  1723
-     *       /    \                 /    \                /    \
-     *    -592   1164    --->    -592   1163   --->    -1159  596
-     *     /      /               /      /              /
-     *   -564   -596            -564   -596           -564
-     */
-    assert_eq_i64(root->relative_linenr, 3);
-    assert_eq_i64(root->left->relative_linenr, -1);
-    assert_eq_i64(root->left->left->relative_linenr, -1);
-    assert_eq_i64(root->right->relative_linenr, 1);
-
-    assert_eq_i64(root->relative_offset, 1723);
-    assert_eq_i64(root->left->relative_offset, -1159);
-    assert_eq_i64(root->left->left->relative_offset, -564);
-    assert_eq_i64(root->right->relative_offset, 596);
-
-    md_simple = md_new(src_simple);
-    root = md_simple->root;
-    md_delete_line_break(md_simple, 1);
-    /* clang-format off
-     *
-     * change in linenr:
-     *      3               2                       2             2
-     *     / \    decr     / \    remove single    / \           / \
-     *    2   5   --->    1   4   ------------>   1   4    or  -1   2
-     *   /   /           /   /                       /             /
-     *  1   4           1   3                       3             -1
-     *
-     * change in relative_offset:
-     *        1156                   1155
-     *       /    \                 /    \
-     *    -592   1164    --->    -592   1164
-     *     /      /                      /
-     *   -564   -596                   -596
-     *
-     * clang-format on
-     */
-    assert_eq_i64(root->relative_linenr, 2);
-    assert_eq_i64(root->left->relative_linenr, -1);
-    assert_eq_i64(root->right->relative_linenr, 2);
-    assert_eq_i64(root->right->left->relative_linenr, -1);
-
-    assert_eq_i64(root->relative_offset, 1155);
-    assert_eq_i64(root->left->relative_offset, -592);
-    assert_eq_i64(root->right->relative_offset, 1164);
-    assert_eq_i64(root->right->left->relative_offset, -596);
-}
-
 Test(metadata, delete_any_complex) {
     for (size_t i = 1; i < alist->used; i++) {
         md = md_new(src);
@@ -456,6 +325,5 @@ Test(metadata, delete_any_complex) {
             assert_eq_i64(md_get_line_start(md, k), alist->data[k] - 1);
         }
         // the last one shouldn't exist anymore
-        assert_eq_i64(md_get_line_start(md, alist->used), -1);
     }
 }

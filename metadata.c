@@ -1,4 +1,5 @@
 #include "alist.h"
+#include "criterion/logging.h"
 #include "metadata.h"
 #include "sys/types.h"
 #include <stdlib.h>
@@ -60,7 +61,7 @@ size_t node_get_depth(MetaDataNode *node) {
 void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount,
                      MetaDataNode *needle) {
     if (linenr > md->rows) {
-        // invalid
+        cr_log_error("md_shift_offset: invalid line number");
         return;
     }
     MetaDataNode *node = needle ? needle : node_seek(md, linenr);
@@ -343,11 +344,11 @@ MetaData *md_new(wchar_t src[static 1]) {
     // put all offsets in the list
     wchar_t *idx = src;
     while (idx != (void *)0x4) {
-        alist_push(alist, (ssize_t)(idx - src - 1) * sizeof(wchar_t));
+        alist_push(alist, (ssize_t)(idx - src - 1));
         idx = wcsstr(idx, L"\n") + 1;
     }
-    // fix error, it's -4 beforehand
-    alist->data[0] += 4;
+    // fix error, it's -1 beforehand
+    alist->data[0] += 1;
     // create tree structure recursively
     result->root = node_create(alist->data, 0, alist->used, 0, nullptr, 0);
     result->rows = alist->used;
@@ -358,7 +359,7 @@ MetaData *md_new(wchar_t src[static 1]) {
 // get byte offset of linenr
 size_t md_get_line_start(MetaData *md, size_t linenr) {
     if (linenr > md->rows) {
-        // invalid
+        cr_log_error("md_get_line_start: invalid line number");
         return -1;
     }
     MetaDataNode *node = md->root;
@@ -381,7 +382,7 @@ size_t md_get_line_start(MetaData *md, size_t linenr) {
 
 void md_insert(MetaData *md, size_t linenr) {
     if (linenr > md->rows) {
-        // invalid
+        cr_log_error("md_insert: invalid line number");
         return;
     }
     // update count
@@ -434,7 +435,7 @@ void md_insert(MetaData *md, size_t linenr) {
 // delete the given line break
 void md_delete_line_break(MetaData *md, size_t linenr) {
     if (linenr > md->rows || linenr == 0) {
-        // invalid
+        cr_log_error("md_delete_line_break: invalid line number");
         return;
     }
     // update count

@@ -1,6 +1,9 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#ifndef METADATA_NODE_H
+#define METADATA_NODE_H
+
 struct MetaDataNode {
     ssize_t relative_linenr;
     ssize_t relative_offset;
@@ -55,3 +58,5 @@ void remove_single_node(MetaData *md, MetaDataNode *node);
 void md_node_mov(MetaDataNode *to, MetaDataNode *from);
 
 void md_free(MetaData *md);
+
+#endif
