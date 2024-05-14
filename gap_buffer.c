@@ -27,12 +27,9 @@ GapBuffer *gb_new(wchar_t source[static 1]) {
 /* 1-indexed, inclusive */
 wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
                       size_t end_row, size_t end_col) {
-    start_col--;
     // get grapheme offset
     size_t offset_start = md_get_line_start(gb->md, start_row) + start_col;
-    size_t offset_end = md_get_line_start(gb->md, end_row) + 1 + end_col;
-    cr_log_warn("offset_start: %zu", offset_start);
-    cr_log_warn("offset_end: %zu", offset_end);
+    size_t offset_end = md_get_line_start(gb->md, end_row) + end_col + 1;
     if (offset_start > offset_end) {
         cr_log_error("gb_get_chars: invalid range");
         return nullptr;

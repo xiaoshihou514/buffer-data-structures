@@ -347,9 +347,8 @@ MetaData *md_new(wchar_t src[static 1]) {
         alist_push(alist, (ssize_t)(idx - src - 1));
         idx = wcsstr(idx, L"\n") + 1;
     }
-    // fix error, it's -1 beforehand
-    alist->data[0] += 1;
-    // create tree structure recursively
+    // note that alist->data[0] is -1, this is intentional so we can callculate
+    // 1-indexed offsets easily create tree structure recursively
     result->root = node_create(alist->data, 0, alist->used, 0, nullptr, 0);
     result->rows = alist->used;
     alist_free(alist);

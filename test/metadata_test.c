@@ -36,7 +36,7 @@ void setup(void) {
     md_simple = md_new(src_simple);
 
     alist = alist_new();
-    alist_push(alist, 0);
+    alist_push(alist, -1);
     for (size_t i = 0; i < wcslen(src); i++) {
         if (src[i] == L'\n') {
             alist_push(alist, i);
@@ -44,7 +44,7 @@ void setup(void) {
     }
 
     alist_simple = alist_new();
-    alist_push(alist_simple, 0);
+    alist_push(alist_simple, -1);
     for (size_t i = 0; i < wcslen(src_simple); i++) {
         if (src_simple[i] == L'\n') {
             alist_push(alist_simple, i);
@@ -108,7 +108,7 @@ Test(metadata, new_simple) {
                  L'\n');
     // note that line 1's line break does not have a real \n
     cr_assert_eq(root_offset + left_offset + root->left->left->relative_offset,
-                 0);
+                 -1);
 }
 
 Test(metadata, get){md_get_works}

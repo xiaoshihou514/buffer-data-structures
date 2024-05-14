@@ -1,5 +1,4 @@
 #include "../gap_buffer.h"
-#include "criterion/logging.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
 #include <wchar.h>
@@ -35,11 +34,31 @@ Test(gap_buffer, new) {
     }
 }
 
-Test(gap_buffer, get) {
-    wchar_t *substring = gb_get_chars(gb, 1, 1, 2, 2);
-    const wchar_t *expected = L"A gap buffer in computer science \nis";
-    cr_log_warn("%ls", substring);
-    cr_expect_eq(wcslen(expected), wcslen(substring));
-    cr_expect_eq(0, wcscmp(expected, substring));
+#define test_gb_get(srow, scol, erow, ecol, out)                               \
+    substring = gb_get_chars(gb, srow, scol, erow, ecol);                      \
+    expected = out;                                                            \
+    cr_assert(eq(wcs, substring, expected));                                   \
     free(substring);
+
+Test(gap_buffer, get) {
+    wchar_t *substring;
+    wchar_t *expected;
+    test_gb_get(1, 1, 2, 2, L"A gap buffer in computer science \nis");
+    test_gb_get(5, 10, 6, 38,
+                L"ially common in text editors, where most changes to \nthe "
+                L"text occur at or near the current ");
+    test_gb_get(5, 10, 6, 39,
+                L"ially common in text editors, where most changes to \nthe "
+                L"text occur at or near the current \n");
+    test_gb_get(5, 10, 7, 0,
+                L"ially common in text editors, where most changes to \nthe "
+                L"text occur at or near the current \n");
+    test_gb_get(17, 0, 18, 1, L"\nat the\n ");
+    test_gb_get(10, 8, 10, 25, L"in two contiguous ");
+    test_gb_get(3, 10, 11, 5,
+                L"operations clustered near the same location.\n Gap buffers "
+                L"\nare especially common in text editors, where most changes "
+                L"to \nthe text occur at or near the current \nlocation of the "
+                L"cursor. The text is\n\n stored in a large \nbuffer in two "
+                L"contiguous segments, with a gap \nbetwe");
 }
