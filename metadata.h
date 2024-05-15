@@ -1,8 +1,8 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-#ifndef METADATA_NODE_H
-#define METADATA_NODE_H
+#ifndef METADATA_H
+#define METADATA_H
 
 struct MetaDataNode {
     ssize_t relative_linenr;

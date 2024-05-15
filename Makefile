@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -pedantic -std=c2x -g -fprofile-arcs -ftest-coverage
+CDBGFLAGS=-Wall -Wextra -pedantic -std=c2x -g -fprofile-arcs -ftest-coverage
 
 LIBDESTDIR=build
 LIBSRCS=$(wildcard *.c)
@@ -22,7 +22,7 @@ clean:
 lib: init $(LIBOBJS)
 
 $(LIBDESTDIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CDBGFLAGS) -c $< -o $@
 
 test: $(TESTBINS)
 	@for test in $(TESTBINS); do \
@@ -31,13 +31,15 @@ test: $(TESTBINS)
 			exit 1; \
 		fi; \
 	done
-	@echo "All tests passed!"
+	@echo -e "\033[0;32mAll tests passed!\033[0m"
 
 $(TESTDESTDIR)/%: test/%.c lib
-	$(CC) $(CFLAGS) $< $(LIBOBJS) -o $@ -lcriterion
+	$(CC) $(CDBGFLAGS) $< $(LIBOBJS) -o $@ -lcriterion
 
 covreport: test $(TESTCOVS)
-	gcovr --html-details build/report/index.html --html-theme github.dark-green -r .
+	gcovr --html-details build/report/index.html \
+		--html-theme github.dark-green \
+		--gcov-exclude-directories build/test
 
 $(LIBDESTDIR)/%.gcov:
 	gcov -o $(TESTDESTDIR)/$*-$*.gcno $(patsubst %_test,%.c,$*).c -t > $@

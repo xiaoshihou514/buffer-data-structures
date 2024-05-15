@@ -20,6 +20,7 @@ GapBuffer *gb_new(wchar_t source[static 1]) {
                       .gap_start = 0,
                       .gap_end = INITIAL_GAP_SIZE,
                       .gap_size = INITIAL_GAP_SIZE,
+                      .total_size = srclen + INITIAL_GAP_SIZE,
                       .md = md_new(source)};
     return gb;
 }
@@ -61,12 +62,84 @@ wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
     return result;
 }
 
-void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc);
+void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc) {
+    size_t size = wcslen(wc);
+    if (size > gb->gap_size) {
+        // not enough space, we double gap size until we have enough
+        size_t oldsize = gb->gap_size;
+        while (size >= gb->gap_size) {
+            gb->gap_size *= 2;
+        }
 
-ArrayList *gb_search(GapBuffer *gb, char *needle);
+        // actually allocate it
+        size_t alloc_size = gb->gap_size - oldsize;
+        size_t tail_size = gb->total_size - gb->gap_end;
+        realloc(gb->data + gb->gap_end, (tail_size + alloc_size) * wsize);
+
+        // fix broken state
+        memcpy(gb->data + gb->gap_end + gb->gap_size, gb->data + gb->gap_end,
+               tail_size * wsize);
+        gb->gap_end = gb->gap_start + gb->gap_size;
+        gb->total_size += alloc_size;
+    }
+
+    // move gap to the correct position
+    size_t offset = md_get_line_start(gb->md, row) + col;
+    if (offset < gb->gap_start) {
+        // offset in the head
+        size_t diff = gb->gap_start - offset;
+        memcpy(gb->data + gb->gap_end - diff, gb->data + offset, diff * wsize);
+    } else if (offset > gb->gap_end) {
+        // offset in the tail
+        size_t diff = offset - gb->gap_end;
+        memcpy(gb->data + gb->gap_end, gb->data + gb->gap_start, diff * wsize);
+    } else {
+        // offset in the middle of the gap
+        size_t diff = offset - gb->gap_start;
+        if (gb->total_size - gb->gap_end < diff) {
+            // offset greater than end of buffer
+            cr_log_error("gb_insert: insert position out of bounds");
+            return;
+        }
+        memcpy(gb->data + gb->gap_start, gb->data + gb->gap_end, diff * wsize);
+    }
+    gb->gap_start = offset;
+
+    // copy into the gap
+    memcpy(gb->data + gb->gap_start, wc, size * wsize);
+    gb->gap_start += size;
+    gb->gap_size -= size;
+
+    // fix broken metadata
+    size_t acc = 0;
+    for (size_t i = 0; i < size; i++) {
+        switch (wc[i]) {
+        case L'\n':
+            // shift line by acc
+            md_shift_offset(gb->md, row, acc, nullptr);
+            md_insert(gb->md, row);
+            row++;
+            acc = 0;
+            break;
+        default:
+            acc++;
+        }
+    }
+    md_shift_offset(gb->md, row, acc, nullptr);
+}
+
+ArrayList *gb_search(GapBuffer *gb, wchar_t *needle);
+
+wchar_t *gb_write(GapBuffer *gb) {
+    wchar_t *result = malloc((gb->total_size - gb->gap_size) * wsize);
+    memcpy(result, gb->data, gb->gap_start * wsize);
+    memcpy(result + gb->gap_start, gb->data + gb->gap_end,
+           (gb->total_size - gb->gap_end) * wsize);
+    return result;
+}
 
 void gb_free(GapBuffer *gb) {
     free(gb->data);
-    free(gb->md);
+    md_free(gb->md);
     free(gb);
 }

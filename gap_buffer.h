@@ -6,11 +6,12 @@
 #define GAP_BUFFER_H
 
 typedef struct {
-    wchar_t *data;
     size_t gap_start;
     size_t gap_end;
     size_t gap_size;
+    size_t total_size;
     MetaData *md;
+    wchar_t *data;
 } GapBuffer;
 
 GapBuffer *gb_new(wchar_t source[static 1]);
@@ -21,7 +22,9 @@ wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
 
 void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc);
 
-ArrayList *gb_search(GapBuffer *gb, char *needle);
+ArrayList *gb_search(GapBuffer *gb, wchar_t *needle);
+
+wchar_t *gb_write(GapBuffer *gb);
 
 void gb_free(GapBuffer *gb);
 

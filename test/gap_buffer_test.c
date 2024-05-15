@@ -22,12 +22,15 @@ void free_gap_buffer(void) { gb_free(gb); }
 
 TestSuite(gap_buffer, .init = new_gap_buffer, .fini = free_gap_buffer);
 
+#define assert_eq_sz(...) cr_assert(eq(sz, ##__VA_ARGS__))
+#define assert_eq_wcs(...) cr_assert(eq(wcs, ##__VA_ARGS__))
+
 Test(gap_buffer, new) {
     const size_t INITIAL_GAP_SIZE = 1024;
 
-    cr_expect_eq(gb->gap_start, 0);
-    cr_expect_eq(gb->gap_end, INITIAL_GAP_SIZE);
-    cr_expect_eq(gb->gap_size, INITIAL_GAP_SIZE);
+    assert_eq_sz(gb->gap_start, 0);
+    assert_eq_sz(gb->gap_end, INITIAL_GAP_SIZE);
+    assert_eq_sz(gb->gap_size, INITIAL_GAP_SIZE);
 
     for (size_t i = 0; i < wcslen(src); i++) {
         cr_expect_eq(gb->data[i + INITIAL_GAP_SIZE], src[i]);
@@ -37,7 +40,7 @@ Test(gap_buffer, new) {
 #define test_gb_get(srow, scol, erow, ecol, out)                               \
     substring = gb_get_chars(gb, srow, scol, erow, ecol);                      \
     expected = out;                                                            \
-    cr_assert(eq(wcs, substring, expected));                                   \
+    assert_eq_wcs(substring, expected);                                        \
     free(substring);
 
 Test(gap_buffer, get) {
@@ -62,3 +65,8 @@ Test(gap_buffer, get) {
                 L"cursor. The text is\n\n stored in a large \nbuffer in two "
                 L"contiguous segments, with a gap \nbetwe");
 }
+
+Test(gap_buffer, write) { assert_eq_wcs(gb_write(gb), src); }
+
+// TODO
+Test(gap_buffer, insert) {}

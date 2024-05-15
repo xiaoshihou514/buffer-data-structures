@@ -6,9 +6,10 @@ Read more about the internals of these data structures [here](https://github.com
 
 ### Benchmarking aspects:
 
+- creation: is it snappy enough or does it lag when you open a buffer?
 - report: get the text in a range, used when rendering buffer
-- insert: used... when you insert stuff
-- search: ...
+- insert: we do want to mutate the buffer
+- search: and traversing it
 
 ### Sample files:
 

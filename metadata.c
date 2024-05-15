@@ -64,6 +64,8 @@ void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount,
         cr_log_error("md_shift_offset: invalid line number");
         return;
     }
+    if (amount == 0)
+        return;
     MetaDataNode *node = needle ? needle : node_seek(md, linenr);
     MetaDataNode *child = node->left;
     if (child) {
@@ -97,6 +99,8 @@ void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount,
  */
 void md_shift_linenr(MetaData *md, size_t linenr, ssize_t amount,
                      MetaDataNode *needle) {
+    if (amount == 0)
+        return;
     needle = needle ? needle : node_seek(md, linenr);
     MetaDataNode *child = needle->left;
     if (child) {
