@@ -1,6 +1,7 @@
 #include "../gap_buffer.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
+#include <stdlib.h>
 #include <wchar.h>
 
 GapBuffer *gb;
@@ -69,4 +70,47 @@ Test(gap_buffer, get) {
 Test(gap_buffer, write) { assert_eq_wcs(gb_write(gb), src); }
 
 // TODO
-Test(gap_buffer, insert) {}
+#define test_gb_insert(row, col, wc)
+
+Test(gap_buffer, insert) {
+    wchar_t *inserted;
+    wchar_t *str_pre, *str;
+    wchar_t *substr = malloc(4096 * wsize);
+    wchar_t *expected = malloc(4096 * wsize);
+    size_t offset, len;
+
+    size_t row = 5;
+    size_t col = 3;
+    wchar_t *wc = L"42blahfoo\nbar\n";
+
+    // record pre state
+    inserted = wc;
+    str_pre = gb_write(gb);
+
+    gb_insert(gb, row, col, wc);
+
+    // record post state
+    str = gb_write(gb);
+    offset = md_get_line_start(gb->md, row) + col;
+
+    // test str_pre[..offset) == str[..offset)
+    wcsncpy(substr, str, offset);
+    wcsncpy(expected, str_pre, offset);
+    assert_eq_wcs(substr, expected);
+
+    // test str[offset..offset+len) == inserted
+    len = wcslen(inserted);
+    wcsncpy(substr, str + offset, len);
+    assert_eq_wcs(substr, inserted);
+
+    // test str[offset+len..) == str_pre[offset..)
+    wcsncpy(substr, str + offset + len, wcslen(str) - (offset + len));
+    wcsncpy(expected, str_pre + offset, wcslen(str) - offset);
+    assert_eq_wcs(substr, expected);
+
+    free(inserted);
+    free(str_pre);
+    free(str);
+    free(substr);
+    free(expected);
+}
