@@ -31,10 +31,19 @@ MetaDataNode *node_create(ssize_t index[static 1], size_t start, size_t end,
     }
 }
 
+size_t node_get_depth(MetaDataNode *node) {
+    if (!node) {
+        return 0;
+    }
+    size_t left = node_get_depth(node->left);
+    size_t right = node_get_depth(node->right);
+    return (left > right) ? left + 1 : right + 1;
+}
+
 MetaDataNode *node_seek(MetaData *md, size_t linenr) {
     MetaDataNode *node = md->root;
     ssize_t row_acc = 0;
-    while (node) {
+    while (true) {
         row_acc += node->relative_linenr;
         if ((size_t)row_acc == linenr) {
             break;
@@ -45,15 +54,6 @@ MetaDataNode *node_seek(MetaData *md, size_t linenr) {
         }
     }
     return node;
-}
-
-size_t node_get_depth(MetaDataNode *node) {
-    if (!node) {
-        return 0;
-    }
-    size_t left = node_get_depth(node->left);
-    size_t right = node_get_depth(node->right);
-    return (left > right) ? left + 1 : right + 1;
 }
 
 /* md helper methods */
@@ -185,17 +185,16 @@ MetaDataNode *rotate_right(MetaDataNode *b) {
 }
 
 void balance_ancestor_of_node(MetaDataNode *target, size_t node_left_depth,
-                              size_t node_right_depth, bool initial_left,
-                              MetaData *md) {
+                              size_t node_right_depth, MetaData *md) {
     size_t left_depth = node_left_depth;
     size_t right_depth = node_right_depth;
-    bool left = initial_left;
+    bool left = true;
     bool left_of_parent;
     MetaDataNode *node = target;
     MetaDataNode *parent;
 
-    while (node->parent) {
-        // in this loop we make `node` balanced
+    while (node && node->parent) {
+        // INV: in this loop we make `node` balanced
         // update depth lazily
         if (left) {
             left_depth =
@@ -383,56 +382,37 @@ size_t md_get_line_start(MetaData *md, size_t linenr) {
     return (size_t)acc;
 }
 
-void md_insert(MetaData *md, size_t linenr) {
-    if (linenr > md->rows) {
+// PRE: offset is valid col number for linenr
+void md_insert(MetaData *md, size_t linenr, size_t offset) {
+    if (linenr == 0 || linenr > md->rows) {
         cr_log_error("md_insert: invalid line number");
         return;
     }
     // update count
     md->rows++;
-    // if tree empty
-    if (!md->root && linenr == 1) {
-        md->root = malloc(sizeof(MetaDataNode));
-        md->root->left = nullptr;
-        md->root->right = nullptr;
-        md->root->parent = nullptr;
-        md->root->relative_linenr = 1;
-        md->root->relative_offset = 0;
-        return;
-    }
-    // if tree not empty
+
     MetaDataNode *target = node_seek(md, linenr);
-    MetaDataNode *node = target;
 
-    // shift relative linenr
-    md_shift_linenr(md, linenr, 1, node);
+    // shift relative linenr and offset
+    MetaDataNode *needle = node_seek(md, linenr + 1);
+    md_shift_linenr(md, linenr + 1, 1, needle);
+    md_shift_offset(md, linenr + 1, 1, needle);
 
-    // shift relative offset
-    md_shift_offset(md, linenr + 1, 1, nullptr);
-
-    // insert and rotate
+    // insert new node
     MetaDataNode *new = malloc(sizeof(MetaDataNode));
-    // correct error
-
-    if (target->left) {
-        // fix error made in the earliler while loop
-        target->left->relative_linenr++;
-        target->left->relative_offset += 2;
+    new->left = nullptr;
+    if (target->right) {
+        target->right->relative_offset -= offset + 1;
+        target->right->relative_linenr--;
     }
-
-    // magical number, check the charts and think about them!
-    new->relative_offset = -2;
-    new->relative_linenr = -1;
+    new->right = target->right;
     new->parent = target;
-    // don' forget the original left node, we can't lose it!
-    new->left = target->left;
-    new->right = nullptr;
+    new->relative_linenr = 1;
+    new->relative_offset = offset + 1;
+    target->right = new;
 
-    // the new node is always put to the left of the previous one
-    target->left = new;
-
-    // balance every node that's an ancestor (and including) new
-    balance_ancestor_of_node(new, node_get_depth(new->left), 0, true, md);
+    // balance tree
+    balance_ancestor_of_node(new, 0, node_get_depth(new->right), md);
 }
 
 // delete the given line break
@@ -456,8 +436,7 @@ void md_delete_line_break(MetaData *md, size_t linenr) {
     if (!target->left || !target->right) {
         remove_single_node(md, target);
         balance_ancestor_of_node(target, node_get_depth(target->left),
-                                 node_get_depth(target->right),
-                                 target == target->parent->left, md);
+                                 node_get_depth(target->right), md);
         return;
     }
     // if it's not the simple case, we have to create it on our own
@@ -475,7 +454,7 @@ void md_delete_line_break(MetaData *md, size_t linenr) {
     MetaDataNode *unbalanced = node->parent;
     remove_single_node(md, node);
     balance_ancestor_of_node(unbalanced, 0, node_get_depth(unbalanced->right),
-                             true, md);
+                             md);
 }
 
 void md_node_free(MetaDataNode *node) {

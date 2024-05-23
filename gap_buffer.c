@@ -1,6 +1,7 @@
 #include "criterion/logging.h"
 #include "gap_buffer.h"
 #include "metadata.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
@@ -62,6 +63,9 @@ wchar_t *gb_get_chars(GapBuffer *gb, size_t start_row, size_t start_col,
     return result;
 }
 
+// BUG: apparently metadata is totally broken
+//          - tree not balanced
+//          - node_seek gives null for in bound values
 void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc) {
     size_t size = wcslen(wc);
     if (size > gb->gap_size) {
@@ -74,7 +78,11 @@ void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc) {
         // actually allocate it
         size_t alloc_size = gb->gap_size - oldsize;
         size_t tail_size = gb->total_size - gb->gap_end;
-        realloc(gb->data + gb->gap_end, (tail_size + alloc_size) * wsize);
+        // clang-format off
+        assert(
+            realloc(gb->data + gb->gap_end, (tail_size + alloc_size) * wsize)
+        );
+        // clang-format on
 
         // fix broken state
         memcpy(gb->data + gb->gap_end + gb->gap_size, gb->data + gb->gap_end,
@@ -104,6 +112,7 @@ void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc) {
         memcpy(gb->data + gb->gap_start, gb->data + gb->gap_end, diff * wsize);
     }
     gb->gap_start = offset;
+    gb->gap_end = gb->gap_start + gb->gap_size;
 
     // copy into the gap
     memcpy(gb->data + gb->gap_start, wc, size * wsize);
@@ -111,22 +120,27 @@ void gb_insert(GapBuffer *gb, size_t row, size_t col, wchar_t *wc) {
     gb->gap_size -= size;
 
     // fix broken metadata
-    size_t acc = 0;
+    size_t acc = col;
     for (size_t i = 0; i < size; i++) {
         switch (wc[i]) {
         case L'\n':
-            // shift line by acc
-            md_shift_offset(gb->md, row, acc, nullptr);
-            md_insert(gb->md, row);
+            // BUG: wrong md_insert
+            // now `row` and all subsequent lines end a bit further
+            md_shift_offset(gb->md, row + 1, acc, nullptr);
+            md_insert(gb->md, row, acc);
             row++;
             acc = 0;
             break;
         default:
             acc++;
+            break;
         }
     }
     md_shift_offset(gb->md, row, acc, nullptr);
 }
+
+wchar_t *gb_del_chars(GapBuffer *gb, size_t start_row, size_t start_col,
+                      size_t end_row, size_t end_col);
 
 ArrayList *gb_search(GapBuffer *gb, wchar_t *needle);
 

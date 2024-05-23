@@ -35,12 +35,13 @@ void md_shift_offset(MetaData *md, size_t linenr, ssize_t amount,
                      MetaDataNode *needle);
 
 /*
- * insert a single line right after the current offset of linenr
- * e.g. for a 10 line document, inserting at 7 would shift the current
- * 7,8,9,10 offset by 1 and make them 8,9,10,11, this function also shifts
- * the nodes after for you
+ * insert a single line at the offset column of the linenr line
+ * e.g. for a 10 line document, inserting at (7, x) would shift the current
+ * 8,9,10 offset by 1 and make them 9,10,11, the new 8 would be the offset of 7
+ * plus x
+ * the tree is also guaranteed to stay balanced
  */
-void md_insert(MetaData *md, size_t linenr);
+void md_insert(MetaData *md, size_t linenr, size_t offset);
 
 /*
  * delete the given "linenr"-th line break

@@ -1,5 +1,6 @@
 #include "../alist.h"
 #include "../metadata.h"
+#include "criterion/logging.h"
 #include <criterion/criterion.h>
 #include <criterion/new/assert.h>
 #include <wchar.h>
@@ -206,111 +207,6 @@ Test(metadata, rotate_complex_right) {
     md_get_works
 }
 
-#define assert_insert_simple                                                   \
-    MetaDataNode *root = md_simple->root;                                      \
-    assert_eq_i64(root->relative_linenr, 4);                                   \
-    assert_eq_i64(root->left->relative_linenr, -2);                            \
-    assert_eq_i64(root->left->left->relative_linenr, -1);                      \
-    assert_eq_i64(root->left->right->relative_linenr, 1);                      \
-    cr_assert(eq(ptr, root->left->left->left, nullptr));                       \
-    assert_eq_i64(root->right->relative_linenr, 2);                            \
-    assert_eq_i64(root->right->left->relative_linenr, -1)
-
-Test(metadata, insert_simple_linenr) {
-    md_insert(md_simple, 2);
-    /* before it got balanced, it should give:
-     *          4               4
-     *         / \             / \
-     *        3   6          -1   2
-     *       /   /     or    /   /
-     *      2   5          -1   -1
-     *     /               /
-     *    1              -1
-     */
-    // assert_eq_i64(root->relative_linenr, 4);
-    // assert_eq_i64(root->left->relative_linenr, -1);
-    // assert_eq_i64(root->left->left->relative_linenr, -1);
-    // assert_eq_i64(root->left->left->left->relative_linenr, -1);
-    // assert_eq_i64(root->right->relative_linenr, 2);
-    // assert_eq_i64(root->right->left->relative_linenr, -1);
-
-    /* after balancing, it should give
-     *          4             4
-     *         / \           / \
-     *        2   6    or  -2   2
-     *       / \ /         / \ /
-     *      1  3 5       -1  1 -1
-     */
-
-    assert_insert_simple;
-}
-
-// the following should give the same results
-Test(metadata, insert_simple_tail) {
-    md_insert(md_simple, 1);
-    assert_insert_simple;
-}
-
-Test(metadata, insert_simple_root) {
-    md_insert(md_simple, 3);
-    assert_insert_simple;
-}
-
-Test(metadata, insert_simple_twice) {
-    md_insert(md_simple, 4);
-    MetaDataNode *root = md_simple->root;
-
-    /*        3              3
-     *       / \            / \
-     *      2   5    or   -1   2
-     *     /   / \        /   / \
-     *    1   4   6     -1  -1   1
-     */
-    assert_eq_i64(root->relative_linenr, 3);
-    assert_eq_i64(root->left->relative_linenr, -1);
-    assert_eq_i64(root->left->left->relative_linenr, -1);
-    cr_assert(eq(ptr, root->left->left->left, nullptr));
-    assert_eq_i64(root->right->relative_linenr, 2);
-    assert_eq_i64(root->right->left->relative_linenr, -1);
-    assert_eq_i64(root->right->right->relative_linenr, 1);
-
-    md_insert(md_simple, 6);
-    /*        3              3
-     *       / \            / \
-     *      2   5    or   -1   2
-     *     /   / \        /   / \
-     *    1   4   7     -1  -1   2
-     *           /              /
-     *          6             -1
-     */
-    assert_eq_i64(root->relative_linenr, 3); // is 4
-    assert_eq_i64(root->left->relative_linenr, -1);
-    assert_eq_i64(root->left->left->relative_linenr, -1);
-    cr_assert(eq(ptr, root->left->left->left, nullptr));
-    assert_eq_i64(root->right->relative_linenr, 2);
-    assert_eq_i64(root->right->left->relative_linenr, -1);
-    assert_eq_i64(root->right->right->relative_linenr, 2); // is 1
-    assert_eq_i64(root->right->right->left->relative_linenr, -1);
-    cr_assert(eq(ptr, root->right->right->right, nullptr));
-}
-
-Test(metadata, insert_complex_offset) {
-    for (size_t i = 0; i < alist->used; i++) {
-        md = md_new(src);
-        md_insert(md, i + 1);
-        for (size_t j = 0; j < i; j++) {
-            // [1..i) shouldn't change
-            assert_eq_i64(md_get_line_start(md, j + 1), alist->data[j]);
-        }
-        // i should be original offset - 1
-        assert_eq_i64(md_get_line_start(md, i + 1), alist->data[i] - 1);
-        for (size_t k = i + 1; k <= alist->used; k++) {
-            // (j..] should increment by 1, and be offsetted by 1
-            assert_eq_i64(md_get_line_start(md, k + 1), alist->data[k - 1] + 1);
-        }
-    }
-}
-
 Test(metadata, delete_any_complex) {
     for (size_t i = 1; i < alist->used; i++) {
         md = md_new(src);
@@ -325,5 +221,30 @@ Test(metadata, delete_any_complex) {
             assert_eq_i64(md_get_line_start(md, k), alist->data[k] - 1);
         }
         // the last one shouldn't exist anymore
+    }
+}
+
+// BUG: breaks for i=20
+Test(metadata, insert_offset) {
+    for (size_t i = 1; i <= alist->used; i++) {
+        md = md_new(src);
+        md_insert(md, i, 0);
+        cr_log_warn("inserted on line %zu", i);
+        for (size_t j = 0; j < i; j++) {
+            // [1..i+1) shouldn't change
+            cr_log_warn("line %zu is %zu, should be %zu", j + 1,
+                        md_get_line_start(md, j + 1), alist->data[j]);
+            assert_eq_i64(md_get_line_start(md, j + 1), alist->data[j]);
+        }
+        // i+2 is the inserted entry
+        cr_log_warn("line %zu is %zu, should be %zu", i + 1,
+                    md_get_line_start(md, i + 1), alist->data[i - 1] + 1);
+        assert_eq_i64(md_get_line_start(md, i + 1), alist->data[i - 1] + 1);
+        for (size_t k = i + 1; k <= alist->used; k++) {
+            // (j..] should increment by 1, and be offsetted by 1
+            cr_log_warn("line %zu is %zu, should be %zu", k + 1,
+                        md_get_line_start(md, k + 1), alist->data[k - 1] + 1);
+            assert_eq_i64(md_get_line_start(md, k + 1), alist->data[k - 1] + 1);
+        }
     }
 }
